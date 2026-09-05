@@ -1,0 +1,31 @@
+name = "cfrouter"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ─── D1 Database ──────────────────────────────────────────────────────────
+# Create your database first:  wrangler d1 create cfrouter-db
+# Then paste the database_id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "cfrouter-db"
+database_id = "YOUR_DATABASE_ID_HERE"
+
+# ─── Environment Variables ────────────────────────────────────────────────
+# Set secrets with `wrangler secret put`:
+#   wrangler secret put ADMIN_PASSWORD
+#   wrangler secret put SESSION_SECRET
+#
+# Or uncomment below for local dev (wrangler.toml [vars] — NOT for production):
+# [vars]
+# ADMIN_PASSWORD = "changeme"
+# SESSION_SECRET = "changeme-session-secret"
+
+# ─── Routes (optional — for custom domains) ──────────────────────────────
+# routes = [
+#   { pattern = "api.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]
+
+# ─── Analytics (optional) ────────────────────────────────────────────────
+# [analytics]
+# enabled = true

@@ -1,0 +1,47 @@
+{
+  "name": "cfrouter",
+  "version": "2.0.0",
+  "description": "OpenAI-compatible AI gateway & load balancer for Cloudflare Workers — proxy, route, and manage multiple AI providers with a built-in admin dashboard.",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "db:init": "wrangler d1 create cfrouter-db",
+    "secret:set": "echo 'Run: wrangler secret put ADMIN_PASSWORD && wrangler secret put SESSION_SECRET'"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "ai-gateway",
+    "openai-compatible",
+    "api-proxy",
+    "load-balancer",
+    "llm-proxy",
+    "ai-router",
+    "cloudflare-d1",
+    "worker",
+    "openai",
+    "anthropic",
+    "ai-agents",
+    "vscode-copilot",
+    "cline",
+    "model-alias",
+    "round-robin"
+  ],
+  "author": "Barivan",
+  "license": "MIT",
+  "homepage": "https://github.com/barivan/cfrouter#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/barivan/cfrouter"
+  },
+  "bugs": {
+    "url": "https://github.com/barivan/cfrouter/issues"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
