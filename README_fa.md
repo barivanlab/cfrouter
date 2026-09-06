@@ -343,7 +343,6 @@ curl -X POST https://cfrouter.your-subdomain.workers.dev/v1/chat/completions \
 |-------|---------|
 | **API سازگار با OpenAI** | جایگزین مستقیم API اپن‌ای‌آی — با هر کلاینتی که پروتکل `/v1/chat/completions` را بشناسد کار می‌کند |
 | **بارگذاری متعادل چند ارائه‌دهنده** | مسیریابی Round-Robin بین ارائه‌دهندگان مختلف AI |
-| **مدل‌های مستعار** | نام‌های کوتاه تعریف کنید (مثلاً `gpt-4o` → `openai/gpt-4o`) |
 | **پنل مدیریت** | رابط وب داخلی برای مدیریت ارائه‌دهندگان، کلیدها و آمار |
 | **ردیابی مصرف** | آمار مصرف توکن به ازای هر کلید و مدل |
 | **پشتیبانی از Streaming** | پشتیبانی کامل از SSE با تبدیل شفاف پاسخ‌ها |
@@ -410,8 +409,6 @@ anthropic/claude-3.5-sonnet
 my-provider/llama-3-8b
 ```
 
-از **مدل‌های مستعار** برای ایجاد نام‌های کوتاه استفاده کنید.
-
 ### نکات مهم
 
 #### اتصال به VSCode / Cline / Continue
@@ -420,13 +417,6 @@ my-provider/llama-3-8b
 
 - **Base URL**: `https://cfrouter.your-subdomain.workers.dev/v1`
 - **API Key**: توکنی که ساختید
-
-#### استفاده از مدل‌های مستعار
-
-در بخش **Aliases** از پنل ادمین، نام‌های کوتاه تعریف کنید:
-
-- مثلاً `gpt4` → `openai/gpt-4o`
-- سپس فقط `gpt4` را در درخواست‌ها استفاده کنید
 
 #### فرمت‌های مختلف API
 
@@ -484,7 +474,6 @@ routes = [
     ▼
 ┌─────────────────────────┐
 │    CFRouter Worker       │  ← لبه Cloudflare
-│  ┃ 解析‌کننده مستعار      │
 │  ┃ متعادل‌کننده بار       │
 │  ┃ ردیاب مصرف            │
 │  ┃ مبدل Streaming       │
@@ -572,4 +561,4 @@ cfrouter/
 
 ## کلمات کلیدی
 
-`cloudflare workers` `ai gateway` `openai compatible` `api proxy` `load balancer` `llm proxy` `ai router` `cloudflare d1` `ai agent` `vscode copilot` `cline` `model alias` `round robin` `ai api` `chat completions` `llm load balancing` `multi provider` `edge computing` `serverless ai` `api management`
+`cloudflare workers` `ai gateway` `openai compatible` `api proxy` `load balancer` `llm proxy` `ai router` `cloudflare d1` `ai agent` `vscode copilot` `cline` `round robin` `ai api` `chat completions` `llm load balancing` `multi provider` `edge computing` `serverless ai` `api management`

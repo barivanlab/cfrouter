@@ -6,9 +6,28 @@
 
 // ─── Configuration ───────────────────────────────────────────────────────
 // Set these via `wrangler secret put` or wrangler.toml [vars]
-const ADMIN_PASSWORD = "changeme";
-const SESSION_SECRET = "changeme-session-secret";
+//   wrangler secret put ADMIN_PASSWORD
+//   wrangler secret put SESSION_SECRET
+// Or use the Setup Wizard at /setup on first run (dashboard users)
 const SESSION_MAX_AGE = 86400; // 24 hours in seconds
+
+// ─── Settings Helpers ───────────────────────────────────────────────────
+// Read settings from DB (fallback to env vars for CLI users)
+
+async function getSetting(env, key, envKey) {
+  // Priority: env var (secret) > DB setting
+  if (env[envKey]) return env[envKey];
+  try {
+    const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind(key).first();
+    return row?.value || null;
+  } catch { return null; }
+}
+
+async function isSetupComplete(env) {
+  const adminPass = await getSetting(env, 'admin_password', 'ADMIN_PASSWORD');
+  const sessionSecret = await getSetting(env, 'session_secret', 'SESSION_SECRET');
+  return !!(adminPass && sessionSecret);
+}
 
 // ─── Session Helpers ─────────────────────────────────────────────────────
 
@@ -18,13 +37,14 @@ function generateSessionId() {
   return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function createSessionToken() {
+async function createSessionToken(env) {
   const sessionId = generateSessionId();
   const expires = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE;
   const payload = `${sessionId}:${expires}`;
   const encoder = new TextEncoder();
+  const sessionSecret = await getSetting(env, 'session_secret', 'SESSION_SECRET');
   const key = await crypto.subtle.importKey(
-    "raw", encoder.encode(SESSION_SECRET),
+    "raw", encoder.encode(sessionSecret),
     { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
   );
   const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
@@ -32,7 +52,7 @@ async function createSessionToken() {
   return `${payload}:${sigHex}`;
 }
 
-async function validateSessionToken(token) {
+async function validateSessionToken(token, env) {
   if (!token) return false;
   try {
     const parts = token.split(':');
@@ -43,8 +63,9 @@ async function validateSessionToken(token) {
 
     const payload = `${sessionId}:${expiresStr}`;
     const encoder = new TextEncoder();
+    const sessionSecret = await getSetting(env, 'session_secret', 'SESSION_SECRET');
     const key = await crypto.subtle.importKey(
-      "raw", encoder.encode(SESSION_SECRET),
+      "raw", encoder.encode(sessionSecret),
       { name: "HMAC", hash: "SHA-256" }, false, ["verify"]
     );
     const sigBytes = new Uint8Array(sigHex.match(/.{2}/g).map(b => parseInt(b, 16)));
@@ -145,7 +166,12 @@ async function initDatabase(env) {
       env.DB.prepare(`CREATE TABLE IF NOT EXISTS custom_providers (
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, base_url TEXT NOT NULL UNIQUE,
         tokens TEXT NOT NULL DEFAULT '[]', enabled INTEGER DEFAULT 1,
-        fetched_models TEXT DEFAULT '[]', slug TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        fetched_models TEXT DEFAULT '[]', slug TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        token_selection TEXT DEFAULT 'round-robin'
+      )`),
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS token_usage (
+        provider_id INTEGER NOT NULL, token_index INTEGER NOT NULL, calls INTEGER DEFAULT 0,
+        PRIMARY KEY (provider_id, token_index)
       )`),
       env.DB.prepare(`CREATE TABLE IF NOT EXISTS usage_summary (
         token TEXT NOT NULL, date TEXT NOT NULL, endpoints_data TEXT DEFAULT '{}',
@@ -166,8 +192,15 @@ async function initDatabase(env) {
         created_at TEXT DEFAULT (datetime('now')),
         last_used_at TEXT
       )`),
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )`),
     ];
     await env.DB.batch(statements);
+
+    // Migrations for existing databases (safe to run repeatedly)
+    try { await env.DB.prepare("ALTER TABLE custom_providers ADD COLUMN token_selection TEXT DEFAULT 'round-robin'").run(); } catch (e) {}
   } catch (e) { console.error("DB Init Error:", e); }
 }
 
@@ -202,14 +235,64 @@ export default {
     // Initialize database (one-time, non-blocking)
     ctx.waitUntil(initDatabase(env));
 
+    // ── Setup Wizard (first run) ──
+    if (path === "/setup") {
+      // If setup already complete, redirect to admin
+      if (await isSetupComplete(env)) {
+        return new Response(null, { status: 302, headers: { "Location": "/admin/login" } });
+      }
+      if (request.method === "POST") {
+        const body = await request.text();
+        const params = new URLSearchParams(body);
+        const adminPassword = params.get("admin_password")?.trim();
+        const confirmPassword = params.get("confirm_password")?.trim();
+        const sessionSecret = params.get("session_secret")?.trim();
+
+        if (!adminPassword || adminPassword.length < 6) {
+          return new Response(setupHtml("Password must be at least 6 characters"), {
+            headers: { "Content-Type": "text/html; charset=UTF-8" }
+          });
+        }
+        if (adminPassword !== confirmPassword) {
+          return new Response(setupHtml("Passwords do not match"), {
+            headers: { "Content-Type": "text/html; charset=UTF-8" }
+          });
+        }
+        if (!sessionSecret || sessionSecret.length < 16) {
+          return new Response(setupHtml("Session secret must be at least 16 characters"), {
+            headers: { "Content-Type": "text/html; charset=UTF-8" }
+          });
+        }
+
+        // Save to database
+        await env.DB.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)")
+          .bind('admin_password', adminPassword).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)")
+          .bind('session_secret', sessionSecret).run();
+
+        return new Response(null, {
+          status: 302,
+          headers: { "Location": "/admin/login?setup=1" }
+        });
+      }
+      return new Response(setupHtml(), {
+        headers: { "Content-Type": "text/html; charset=UTF-8" }
+      });
+    }
+
     // ── Admin Routes ──
     if (path === "/admin/login" || path === "/admin/login/") {
+      // If setup not complete, redirect to setup wizard
+      if (!(await isSetupComplete(env))) {
+        return new Response(null, { status: 302, headers: { "Location": "/setup" } });
+      }
       if (request.method === "POST") {
         const body = await request.text();
         const params = new URLSearchParams(body);
         const password = params.get("password");
-        if (password === ADMIN_PASSWORD) {
-          const token = await createSessionToken();
+        const adminPassword = await getSetting(env, 'admin_password', 'ADMIN_PASSWORD');
+        if (password === adminPassword) {
+          const token = await createSessionToken(env);
           return new Response(null, {
             status: 302,
             headers: {
@@ -237,7 +320,7 @@ export default {
     // Protected admin routes
     if (path.startsWith("/admin")) {
       const sessionToken = getSessionCookie(request);
-      const valid = await validateSessionToken(sessionToken);
+      const valid = await validateSessionToken(sessionToken, env);
       if (!valid) {
         return new Response(null, {
           status: 302,
@@ -256,10 +339,8 @@ export default {
         if (path === "/admin/providers/edit-token") return await handleEditToken(request, env);
         if (path === "/admin/providers/add-token") return await handleAddToken(request, env);
         if (path === "/admin/providers/delete-token") return await handleDeleteToken(request, env);
-        if (path === "/admin/aliases/add") return await handleAddAlias(request, env);
-        if (path === "/admin/aliases/edit") return await handleEditAlias(request, env);
-        if (path === "/admin/aliases/delete") return await handleDeleteAlias(request, env);
-        if (path === "/admin/aliases/toggle") return await handleToggleAlias(request, env);
+        if (path === "/admin/providers/set-token-selection") return await handleSetTokenSelection(request, env);
+        if (path === "/admin/providers/test-model") return await handleTestModel(request, env);
         if (path === "/admin/tokens/create") return await handleCreateToken(request, env);
         if (path === "/admin/tokens/toggle") return await handleToggleTokenKey(request, env);
         if (path === "/admin/tokens/delete") return await handleDeleteTokenKey(request, env);
@@ -279,8 +360,8 @@ export default {
         return await renderProviderDetail(parseInt(providerDetailMatch[1]), env, url);
       }
       if (path === "/admin/providers") return await renderAdminProviders(env);
-      if (path === "/admin/aliases") return await renderAdminAliases(env);
       if (path === "/admin/tokens") return await renderAdminTokens(env, url);
+      if (path === "/admin/docs") return await renderAdminDocs(env);
 
       return new Response("Not Found", { status: 404 });
     }
@@ -411,12 +492,14 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
       for (const cp of customProviders) {
         if ((cp.slug || providerSlug(cp.name)) === slug) {
           const tokens = parseTokens(cp.tokens);
-          const enabledTokens = tokens.filter(t => t.enabled && t.value);
-          if (enabledTokens.length > 0) {
+          const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
+          if (selectedToken) {
             targets = [{
               url: cp.base_url.replace(/\/$/, ""),
               type: "custom",
-              token: enabledTokens[0].value,
+              token: selectedToken.value,
+              providerId: cp.id,
+              tokenIndex: selectedToken._originalIndex,
             }];
             rewrittenModelName = actualModel;
             routedToProvider = true;
@@ -431,12 +514,14 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
   if (!routedToProvider && customProviders && customProviders.length > 0) {
     for (const cp of customProviders) {
       const tokens = parseTokens(cp.tokens);
-      const enabledTokens = tokens.filter(t => t.enabled && t.value);
-      if (enabledTokens.length > 0) {
+      const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
+      if (selectedToken) {
         targets.push({
           url: cp.base_url.replace(/\/$/, ""),
           type: "custom",
-          token: enabledTokens[0].value,
+          token: selectedToken.value,
+          providerId: cp.id,
+          tokenIndex: selectedToken._originalIndex,
         });
       }
     }
@@ -445,6 +530,8 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
   // ── Proxy loop with adaptive timeout per endpoint ──
   let response;
   let success = false;
+  let usedProviderId = null;
+  let usedTokenIndex = null;
   const needBodyRewrite = (usedAlias || rewrittenModelName !== modelName) && bodyText;
   const upstreamModel = rewrittenModelName;
 
@@ -494,6 +581,8 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
       }
 
       success = true;
+      usedProviderId = target.providerId || null;
+      usedTokenIndex = target.tokenIndex ?? null;
       break;
     } catch (e) {
       continue;
@@ -516,9 +605,13 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
   if (isApiPath) {
     if (!isStream) {
       // Clone ONCE: background reads clone, client gets original body
-      ctx.waitUntil(trackUsage(response.clone(), userToken, path, modelName, env, apiKeyData.id));
+      ctx.waitUntil(trackUsage(response.clone(), apiKeyData.id.toString(), path, modelName, env, apiKeyData.id));
     } else {
-      ctx.waitUntil(trackStreamUsage(userToken, path, modelName, env, apiKeyData.id));
+      ctx.waitUntil(trackStreamUsage(apiKeyData.id.toString(), path, modelName, env, apiKeyData.id));
+    }
+    // Track provider token usage for least-used strategy
+    if (usedProviderId != null && usedTokenIndex != null) {
+      ctx.waitUntil(trackTokenUsage(usedProviderId, usedTokenIndex, env));
     }
   }
 
@@ -611,11 +704,15 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
           }
         });
 
-        return new Response(response.body.pipeThrough(transform), {
+        const transformedResponse = new Response(response.body.pipeThrough(transform), {
           status: response.status,
           statusText: response.statusText,
           headers: responseHeaders
         });
+        if (isStream && isApiPath) {
+          return captureStreamUsage(transformedResponse, apiKeyData.id.toString(), path, modelName, env, apiKeyData.id);
+        }
+        return transformedResponse;
       }
     } catch (e) {
       // Fallback: return original response
@@ -623,6 +720,13 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
   }
 
   // Default: stream body directly (zero buffer)
+  if (isStream && isApiPath) {
+    return captureStreamUsage(new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders
+    }), apiKeyData.id.toString(), path, modelName, env, apiKeyData.id);
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -659,7 +763,7 @@ async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
   openaiBody.model = rewrittenModel;
 
   // Fetch upstream
-  const { response, success } = await fetchUpstream(targets, openaiBody, request.method);
+  const { response, success, target: usedTarget } = await fetchUpstream(targets, openaiBody, request.method);
 
   if (!success) {
     return new Response(JSON.stringify({
@@ -677,8 +781,10 @@ async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
     headers.set("Cache-Control", "no-cache");
     headers.set("Connection", "keep-alive");
     headers.set("Access-Control-Allow-Origin", "*");
-    ctx.waitUntil(trackStreamUsage(apiKeyData.id.toString(), '/v1/messages', responseModel, env, apiKeyData.id));
-    return new Response(response.body.pipeThrough(transform), { status: 200, headers });
+    if (usedTarget?.providerId != null && usedTarget?.tokenIndex != null) {
+      ctx.waitUntil(trackTokenUsage(usedTarget.providerId, usedTarget.tokenIndex, env));
+    }
+    return captureStreamUsage(new Response(response.body.pipeThrough(transform), { status: 200, headers }), apiKeyData.id.toString(), '/v1/messages', responseModel, env, apiKeyData.id);
   }
 
   // Non-streaming: convert response
@@ -686,6 +792,9 @@ async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
   const anthropicRes = openAIToAnthropic(openaiRes, responseModel);
   const headers = new Headers({ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
   ctx.waitUntil(trackUsage(new Response(JSON.stringify(openaiRes)), apiKeyData.id.toString(), '/v1/messages', responseModel, env, apiKeyData.id));
+  if (usedTarget?.providerId != null && usedTarget?.tokenIndex != null) {
+    ctx.waitUntil(trackTokenUsage(usedTarget.providerId, usedTarget.tokenIndex, env));
+  }
   return new Response(JSON.stringify(anthropicRes), { status: 200, headers });
 }
 
@@ -719,7 +828,7 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
   openaiBody.stream = isStream;
 
   // Fetch upstream
-  const { response, success } = await fetchUpstream(targets, openaiBody, request.method);
+  const { response, success, target: usedTarget } = await fetchUpstream(targets, openaiBody, request.method);
 
   if (!success) {
     return new Response(JSON.stringify({
@@ -735,8 +844,10 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
     const headers = new Headers(response.headers);
     headers.set("Content-Type", "application/json");
     headers.set("Access-Control-Allow-Origin", "*");
-    ctx.waitUntil(trackStreamUsage(apiKeyData.id.toString(), '/v1beta/models/' + model, responseModel, env, apiKeyData.id));
-    return new Response(response.body.pipeThrough(transform), { status: 200, headers });
+    if (usedTarget?.providerId != null && usedTarget?.tokenIndex != null) {
+      ctx.waitUntil(trackTokenUsage(usedTarget.providerId, usedTarget.tokenIndex, env));
+    }
+    return captureStreamUsage(new Response(response.body.pipeThrough(transform), { status: 200, headers }), apiKeyData.id.toString(), '/v1beta/models/' + model, responseModel, env, apiKeyData.id);
   }
 
   // Non-streaming: convert response
@@ -744,6 +855,9 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
   const geminiRes = openAIToGemini(openaiRes, responseModel);
   const headers = new Headers({ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
   ctx.waitUntil(trackUsage(new Response(JSON.stringify(openaiRes)), apiKeyData.id.toString(), '/v1beta/models/' + model, responseModel, env, apiKeyData.id));
+  if (usedTarget?.providerId != null && usedTarget?.tokenIndex != null) {
+    ctx.waitUntil(trackTokenUsage(usedTarget.providerId, usedTarget.tokenIndex, env));
+  }
   return new Response(JSON.stringify(geminiRes), { status: 200, headers });
 }
 
@@ -766,7 +880,7 @@ async function resolveModelAndTargets(env, modelName) {
 
   // Fetch custom providers
   const { results: customProviders } = await env.DB.prepare(
-    "SELECT id, name, base_url, tokens, slug FROM custom_providers WHERE enabled = 1"
+    "SELECT id, name, base_url, tokens, slug, token_selection FROM custom_providers WHERE enabled = 1"
   ).all();
 
   let targets = [];
@@ -780,11 +894,13 @@ async function resolveModelAndTargets(env, modelName) {
     for (const cp of customProviders) {
       if ((cp.slug || providerSlug(cp.name)) === slug) {
         const tokens = parseTokens(cp.tokens);
-        const enabledTokens = tokens.filter(t => t.enabled && t.value);
-        if (enabledTokens.length > 0) {
+        const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
+        if (selectedToken) {
           targets = [{
             url: cp.base_url.replace(/\/$/, ""),
-            token: enabledTokens[0].value,
+            token: selectedToken.value,
+            providerId: cp.id,
+            tokenIndex: selectedToken._originalIndex,
           }];
           rewrittenModel = actualModel;
           break;
@@ -797,11 +913,13 @@ async function resolveModelAndTargets(env, modelName) {
   if (targets.length === 0 && customProviders.length > 0) {
     for (const cp of customProviders) {
       const tokens = parseTokens(cp.tokens);
-      const enabledTokens = tokens.filter(t => t.enabled && t.value);
-      if (enabledTokens.length > 0) {
+      const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
+      if (selectedToken) {
         targets.push({
           url: cp.base_url.replace(/\/$/, ""),
-          token: enabledTokens[0].value,
+          token: selectedToken.value,
+          providerId: cp.id,
+          tokenIndex: selectedToken._originalIndex,
         });
       }
     }
@@ -833,13 +951,13 @@ async function fetchUpstream(targets, openaiBody, method) {
       clearTimeout(timeout);
 
       if (response.ok) {
-        return { response, success: true };
+        return { response, success: true, target };
       }
     } catch (e) {
       continue;
     }
   }
-  return { response: null, success: false };
+  return { response: null, success: false, target: null };
 }
 
 // ─── Format Conversion Functions ────────────────────────────────────────
@@ -1079,6 +1197,83 @@ async function trackStreamUsage(token, endpoint, model, env, apiKeyId = null) {
   } catch (e) { console.error("Stream usage tracking error:", e); }
 }
 
+async function trackTokenUsage(providerId, tokenIndex, env) {
+  try {
+    await env.DB.prepare(`
+      INSERT INTO token_usage (provider_id, token_index, calls) VALUES (?, ?, 1)
+      ON CONFLICT(provider_id, token_index) DO UPDATE SET calls = calls + 1
+    `).bind(providerId, tokenIndex).run();
+  } catch (e) { console.error("Token usage tracking error:", e); }
+}
+
+// Wrap a streaming response to capture usage data from SSE chunks
+function captureStreamUsage(response, token, endpoint, model, env, apiKeyId) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let usage = null;
+
+  const stream = new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        // Stream finished — track actual usage if captured
+        const date = new Date().toISOString().split('T')[0];
+        try {
+          const existingRow = await env.DB.prepare("SELECT endpoints_data FROM usage_summary WHERE token = ? AND date = ?").bind(token, date).first();
+          let data = existingRow?.endpoints_data ? JSON.parse(existingRow.endpoints_data) : {};
+          const key = `${endpoint}:${model}`;
+          if (!data[key]) data[key] = { calls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+          data[key].calls += 1;
+          if (usage) {
+            data[key].prompt_tokens += usage.prompt_tokens || 0;
+            data[key].completion_tokens += usage.completion_tokens || 0;
+            data[key].total_tokens += usage.total_tokens || 0;
+          } else {
+            data[key].prompt_tokens += 1;
+            data[key].total_tokens += 1;
+          }
+          await env.DB.prepare(`
+            INSERT INTO usage_summary (token, date, endpoints_data, api_key_id) VALUES (?, ?, ?, ?)
+            ON CONFLICT(token, date) DO UPDATE SET endpoints_data = excluded.endpoints_data, api_key_id = excluded.api_key_id
+          `).bind(token, date, JSON.stringify(data), apiKeyId).run();
+        } catch (e) { console.error("Stream usage track error:", e); }
+        controller.close();
+        return;
+      }
+      // Pass chunk through and scan for usage data
+      controller.enqueue(value);
+      try {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete line
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') continue;
+          try {
+            const obj = JSON.parse(payload);
+            // OpenAI format: usage in final chunk
+            if (obj.usage) {
+              usage = {
+                prompt_tokens: obj.usage.prompt_tokens || 0,
+                completion_tokens: obj.usage.completion_tokens || 0,
+                total_tokens: obj.usage.total_tokens || 0
+              };
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+  });
+
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  });
+}
+
 // ─── Public Health Check ─────────────────────────────────────────────────
 
 async function handlePublicHealth(env) {
@@ -1115,10 +1310,12 @@ async function handleAddProvider(request, env) {
   const slug = slugRaw || providerSlug(name);
   const tokens = tokensRaw.split("\n").map(t => t.trim()).filter(t => t.length > 0).map(t => ({ value: t, enabled: true, name: "" }));
 
+  let providerId = null;
   try {
-    await env.DB.prepare(
+    const result = await env.DB.prepare(
       "INSERT INTO custom_providers (name, slug, base_url, tokens, enabled) VALUES (?, ?, ?, ?, 1)"
     ).bind(name, slug, baseUrl, JSON.stringify(tokens)).run();
+    providerId = result.meta?.last_row_id;
   } catch (e) {
     if (e.message?.includes("UNIQUE")) {
       return new Response("A provider with this URL already exists", { status: 409 });
@@ -1126,7 +1323,37 @@ async function handleAddProvider(request, env) {
     throw e;
   }
 
-  return new Response(null, { status: 302, headers: { "Location": "/admin/providers?added=1" } });
+  // Auto-fetch models for the new provider (non-blocking)
+  if (providerId) {
+    try {
+      let modelsUrl = baseUrl.replace(/\/$/, "");
+      if (!modelsUrl.endsWith("/v1/models")) {
+        modelsUrl = modelsUrl.replace(/\/v1\/?$/, "") + "/v1/models";
+      }
+      const firstToken = tokens.find(t => t.enabled);
+      const fetchHeaders = { "Content-Type": "application/json" };
+      if (firstToken) fetchHeaders["Authorization"] = `Bearer ${firstToken.value}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const resp = await fetch(modelsUrl, { headers: fetchHeaders, signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (resp.ok) {
+        const data = await resp.json();
+        let models = [];
+        if (data.data && Array.isArray(data.data)) {
+          models = data.data.map(m => ({ id: m.id || m.name || "", name: m.name || m.id || "", context_window: m.context_window || m.context_length || null, capabilities: m.capabilities || {}, created: m.created || null }));
+        } else if (Array.isArray(data)) {
+          models = data.map(m => typeof m === "string" ? { id: m, name: m, context_window: null, capabilities: {}, created: null } : { id: m.id || m.name || "", name: m.name || m.id || "", context_window: m.context_window || m.context_length || null, capabilities: m.capabilities || {}, created: m.created || null });
+        }
+        if (models.length > 0) {
+          await env.DB.prepare("UPDATE custom_providers SET fetched_models = ? WHERE id = ?")
+            .bind(JSON.stringify(models), providerId).run();
+        }
+      }
+    } catch (e) { /* ignore auto-fetch errors */ }
+  }
+
+  return new Response(null, { status: 302, headers: { "Location": `/admin/providers/${providerId || ""}?added=1` } });
 }
 
 async function handleEditProvider(request, env) {
@@ -1169,6 +1396,23 @@ async function handleDeleteProvider(request, env) {
   return new Response(null, { status: 302, headers: { "Location": "/admin/providers?deleted=1" } });
 }
 
+async function handleSetTokenSelection(request, env) {
+  const body = await request.text();
+  const params = new URLSearchParams(body);
+  const providerId = params.get("provider_id");
+  const tokenSelection = params.get("token_selection");
+
+  if (!providerId || !tokenSelection) return new Response("Missing fields", { status: 400 });
+
+  const validStrategies = ['round-robin', 'random', 'least-used', 'sequential'];
+  if (!validStrategies.includes(tokenSelection)) return new Response("Invalid strategy", { status: 400 });
+
+  await env.DB.prepare("UPDATE custom_providers SET token_selection = ? WHERE id = ?")
+    .bind(tokenSelection, parseInt(providerId)).run();
+
+  return new Response(null, { status: 302, headers: { "Location": `/admin/providers/${providerId}?saved=1` } });
+}
+
 async function handleToggleCustomProvider(request, env) {
   const body = await request.text();
   const params = new URLSearchParams(body);
@@ -1199,12 +1443,12 @@ async function handleFetchModels(request, env) {
     let authToken = null;
     if (providerType === "custom" && providerId) {
       try {
-        const { results } = await env.DB.prepare("SELECT tokens FROM custom_providers WHERE id = ?")
+        const { results } = await env.DB.prepare("SELECT tokens, token_selection FROM custom_providers WHERE id = ?")
           .bind(parseInt(providerId)).all();
         if (results && results[0]) {
           const tokens = parseTokens(results[0].tokens);
-          const enabledToken = tokens.find(t => t.enabled && t.value);
-          if (enabledToken) authToken = enabledToken.value;
+          const selectedToken = await selectToken(tokens, results[0].token_selection || 'round-robin', parseInt(providerId), env);
+          if (selectedToken) authToken = selectedToken.value;
         }
       } catch (e) { /* continue without token */ }
     }
@@ -1257,12 +1501,85 @@ async function handleFetchModels(request, env) {
   }
 }
 
+async function handleTestModel(request, env) {
+  const body = await request.text();
+  const params = new URLSearchParams(body);
+  const providerId = parseInt(params.get("provider_id"));
+  const modelId = params.get("model_id")?.trim();
+  const testPrompt = params.get("prompt")?.trim() || "Say hi in one word.";
+
+  if (!providerId || !modelId) {
+    return new Response(JSON.stringify({ ok: false, error: "Missing provider_id or model_id" }), {
+      status: 400, headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  try {
+    const { results } = await env.DB.prepare("SELECT base_url, tokens, token_selection FROM custom_providers WHERE id = ?")
+      .bind(providerId).all();
+    if (!results || !results[0]) {
+      return new Response(JSON.stringify({ ok: false, error: "Provider not found" }), {
+        status: 404, headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    const p = results[0];
+    const tokens = parseTokens(p.tokens);
+    const selectedToken = await selectToken(tokens, p.token_selection || 'round-robin', providerId, env);
+
+    if (!selectedToken) {
+      return new Response(JSON.stringify({ ok: false, error: "No enabled tokens" }), {
+        status: 400, headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    let targetUrl = p.base_url.replace(/\/$/, "").replace(/\/v1\/?$/, "") + "/v1/chat/completions";
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const resp = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${selectedToken.value}`
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [{ role: "user", content: testPrompt }],
+        max_tokens: 32,
+        temperature: 0.3
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (resp.ok) {
+      const data = await resp.json();
+      const reply = data.choices?.[0]?.message?.content?.trim() || "";
+      return new Response(JSON.stringify({ ok: true, reply }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+    } else {
+      const errText = await resp.text().catch(() => "");
+      return new Response(JSON.stringify({ ok: false, error: `HTTP ${resp.status}: ${errText.substring(0, 200)}` }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+  } catch (e) {
+    const errMsg = e.name === "AbortError" ? "Timeout (15s)" : e.message;
+    return new Response(JSON.stringify({ ok: false, error: errMsg }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}
+
 async function handleFetchAllModels(env) {
   const results = {};
 
   // Fetch from custom providers
   const { results: customProviders } = await env.DB.prepare(
-    "SELECT id, name, base_url, tokens FROM custom_providers WHERE enabled = 1"
+    "SELECT id, name, base_url, tokens, token_selection FROM custom_providers WHERE enabled = 1"
   ).all();
 
   if (customProviders) {
@@ -1275,9 +1592,9 @@ async function handleFetchAllModels(env) {
 
         // Get enabled token for this provider
         const tokens = parseTokens(cp.tokens);
-        const enabledToken = tokens.find(t => t.enabled && t.value);
+        const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
         const headers = {};
-        if (enabledToken) headers["Authorization"] = `Bearer ${enabledToken.value}`;
+        if (selectedToken) headers["Authorization"] = `Bearer ${selectedToken.value}`;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -1316,7 +1633,7 @@ async function handleModelsEndpoint(env, corsHeaders) {
   // Custom provider models (prefixed with provider slug)
   try {
     const { results: customProviders } = await env.DB.prepare(
-      "SELECT id, name, slug, base_url, tokens, fetched_models FROM custom_providers WHERE enabled = 1"
+      "SELECT id, name, slug, base_url, tokens, fetched_models, token_selection FROM custom_providers WHERE enabled = 1"
     ).all();
 
     if (customProviders) {
@@ -1333,9 +1650,9 @@ async function handleModelsEndpoint(env, corsHeaders) {
           }
           // Get enabled token for auth
           const tokens = parseTokens(cp.tokens);
-          const enabledToken = tokens.find(t => t.enabled && t.value);
+          const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
           const fetchHeaders = {};
-          if (enabledToken) fetchHeaders["Authorization"] = `Bearer ${enabledToken.value}`;
+          if (selectedToken) fetchHeaders["Authorization"] = `Bearer ${selectedToken.value}`;
 
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -1677,6 +1994,81 @@ async function handleRenameTokenKey(request, env) {
   return new Response(null, { status: 302, headers: { "Location": "/admin/tokens" } });
 }
 
+// ─── Setup Wizard Page ──────────────────────────────────────────────────
+
+function setupHtml(errorMsg) {
+  // Generate a random 32-char hex string for session secret
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  const defaultSecret = Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Setup - CFRouter</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#06080f;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 30% 20%,rgba(56,189,248,0.06) 0%,transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(139,92,246,0.05) 0%,transparent 50%);pointer-events:none;z-index:0}
+  .setup-wrap{position:relative;z-index:1;width:100%;max-width:460px;margin:20px}
+  .setup-card{background:rgba(15,20,35,0.8);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:44px 36px;box-shadow:0 25px 60px rgba(0,0,0,0.5)}
+  .logo{text-align:center;margin-bottom:32px}
+  .logo-icon{width:52px;height:52px;margin:0 auto 16px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 8px 24px rgba(59,130,246,0.3)}
+  .logo h1{font-size:22px;font-weight:700;color:#f8fafc;letter-spacing:-0.5px}
+  .logo p{font-size:12px;color:#64748b;margin-top:6px;letter-spacing:0.3px}
+  .field{margin-bottom:20px}
+  .field label{display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}
+  .field input{width:100%;padding:13px 16px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;color:#f1f5f9;font-size:14px;outline:none;transition:all 0.2s}
+  .field input:focus{border-color:rgba(59,130,246,0.5);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
+  .field input::placeholder{color:#475569}
+  .field .hint{font-size:11px;color:#475569;margin-top:6px}
+  .btn-setup{width:100%;padding:13px;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;letter-spacing:0.3px}
+  .btn-setup:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(59,130,246,0.3)}
+  .btn-setup:active{transform:translateY(0)}
+  .error{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:12px 16px;margin-bottom:22px;font-size:13px;color:#fca5a5;display:flex;align-items:center;gap:8px}
+  .info{background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:12px;padding:14px 16px;margin-bottom:24px;font-size:12px;color:#93c5fd;line-height:1.6}
+  .info strong{color:#60a5fa}
+  .footer{text-align:center;margin-top:28px;font-size:11px;color:#334155;letter-spacing:0.3px}
+</style>
+</head>
+<body>
+<div class="setup-wrap">
+  <div class="setup-card">
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <h1>CFRouter</h1>
+      <p>Initial Setup</p>
+    </div>
+    <div class="info">
+      <strong>Welcome!</strong> This appears to be your first time running CFRouter.<br>
+      Please set your <strong>Admin Password</strong> and <strong>Session Secret</strong> to continue.
+    </div>
+    ${errorMsg ? `<div class="error"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>${errorMsg}</div>` : ''}
+    <form method="POST" action="/setup">
+      <div class="field">
+        <label>Admin Password</label>
+        <input type="password" name="admin_password" autofocus placeholder="Min 6 characters" required minlength="6">
+      </div>
+      <div class="field">
+        <label>Confirm Password</label>
+        <input type="password" name="confirm_password" placeholder="Repeat your password" required minlength="6">
+      </div>
+      <div class="field">
+        <label>Session Secret</label>
+        <input type="text" name="session_secret" value="${defaultSecret}" required minlength="16">
+        <div class="hint">Auto-generated. Used to sign login sessions. You can change it if you want.</div>
+      </div>
+      <button type="submit" class="btn-setup">Complete Setup</button>
+    </form>
+    <div class="footer">CFRouter Gateway &middot; v3.0</div>
+  </div>
+</div>
+</body>
+</html>`;
+}
+
 // ─── Admin Login Page ────────────────────────────────────────────────────
 
 function loginHtml(errorMsg) {
@@ -1820,6 +2212,10 @@ function adminLayout(title, activeTab, content) {
   .stat-card.purple::before{background:linear-gradient(90deg,transparent,var(--accent-purple),transparent)}
   .stat-card.cyan .value{color:var(--accent-cyan)}
   .stat-card.cyan::before{background:linear-gradient(90deg,transparent,var(--accent-cyan),transparent)}
+  .stat-card.orange .value{color:#f97316}
+  .stat-card.orange::before{background:linear-gradient(90deg,transparent,#f97316,transparent)}
+  .stat-card.slate .value{color:var(--text-secondary)}
+  .stat-card.slate::before{background:linear-gradient(90deg,transparent,var(--text-secondary),transparent)}
 
   /* ─── Table ─── */
   .table-wrap{background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius);overflow:hidden}
@@ -1937,13 +2333,13 @@ function adminLayout(title, activeTab, content) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
       <span>Providers</span>
     </a>
-    <a href="/admin/aliases" class="nav-item ${activeTab === 'aliases' ? 'active' : ''}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-      <span>Aliases</span>
-    </a>
     <a href="/admin/tokens" class="nav-item ${activeTab === 'tokens' ? 'active' : ''}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
       <span>Tokens</span>
+    </a>
+    <a href="/admin/docs" class="nav-item ${activeTab === 'docs' ? 'active' : ''}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span>Docs</span>
     </a>
   </div>
   <div class="sidebar-bottom">
@@ -1968,12 +2364,15 @@ async function renderAdminAnalytics(env, url) {
   const days = parseInt(url.searchParams.get("days") || "7", 10);
 
   // SQL aggregation: daily usage stats
+  // endpoints_data is a nested JSON object like {"/v1/chat:gpt-4o": {calls, tokens}}
+  // so we must use json_each() to iterate through the keys
   const { results: dailyStats } = await env.DB.prepare(`
-    SELECT date, SUM(CAST(json_extract(endpoints_data, '$.calls') AS INTEGER)) as total_calls,
-           SUM(CAST(json_extract(endpoints_data, '$.total_tokens') AS INTEGER)) as total_tokens,
-           SUM(CAST(json_extract(endpoints_data, '$.prompt_tokens') AS INTEGER)) as prompt_tokens,
-           SUM(CAST(json_extract(endpoints_data, '$.completion_tokens') AS INTEGER)) as completion_tokens
-    FROM usage_summary
+    SELECT date,
+           SUM(CAST(json_extract(value, '$.calls') AS INTEGER)) as total_calls,
+           SUM(CAST(json_extract(value, '$.total_tokens') AS INTEGER)) as total_tokens,
+           SUM(CAST(json_extract(value, '$.prompt_tokens') AS INTEGER)) as prompt_tokens,
+           SUM(CAST(json_extract(value, '$.completion_tokens') AS INTEGER)) as completion_tokens
+    FROM usage_summary, json_each(endpoints_data)
     WHERE date >= date('now', '-' || ? || ' days')
     GROUP BY date
     ORDER BY date ASC
@@ -1981,10 +2380,17 @@ async function renderAdminAnalytics(env, url) {
 
   // SQL aggregation: per-model breakdown
   const { results: modelStats } = await env.DB.prepare(`
-    SELECT key, SUM(calls) as calls, SUM(tokens) as tokens
+    SELECT key,
+           SUM(calls) as calls,
+           SUM(tokens) as tokens,
+           SUM(prompt_tokens) as prompt_tokens,
+           SUM(completion_tokens) as completion_tokens
     FROM (
-      SELECT key, CAST(json_extract(value, '$.calls') AS INTEGER) as calls,
-             CAST(json_extract(value, '$.total_tokens') AS INTEGER) as tokens
+      SELECT key,
+             CAST(json_extract(value, '$.calls') AS INTEGER) as calls,
+             CAST(json_extract(value, '$.total_tokens') AS INTEGER) as tokens,
+             CAST(json_extract(value, '$.prompt_tokens') AS INTEGER) as prompt_tokens,
+             CAST(json_extract(value, '$.completion_tokens') AS INTEGER) as completion_tokens
       FROM usage_summary, json_each(endpoints_data)
       WHERE date >= date('now', '-' || ? || ' days')
     )
@@ -1995,17 +2401,20 @@ async function renderAdminAnalytics(env, url) {
   // SQL aggregation: per-key breakdown
   const { results: keyStats } = await env.DB.prepare(`
     SELECT COALESCE(k.name, 'anonymous') as key_name,
-           SUM(CAST(json_extract(u.endpoints_data, '$.calls') AS INTEGER)) as calls,
-           SUM(CAST(json_extract(u.endpoints_data, '$.total_tokens') AS INTEGER)) as tokens
+           SUM(CAST(json_extract(uv.value, '$.calls') AS INTEGER)) as calls,
+           SUM(CAST(json_extract(uv.value, '$.total_tokens') AS INTEGER)) as tokens,
+           SUM(CAST(json_extract(uv.value, '$.prompt_tokens') AS INTEGER)) as prompt_tokens,
+           SUM(CAST(json_extract(uv.value, '$.completion_tokens') AS INTEGER)) as completion_tokens
     FROM usage_summary u
     LEFT JOIN api_keys k ON u.api_key_id = k.id
+    JOIN json_each(u.endpoints_data) uv
     WHERE u.date >= date('now', '-' || ? || ' days')
     GROUP BY u.api_key_id
     ORDER BY calls DESC
   `).bind(days).all();
 
   // Calculate totals
-  let totalCalls = 0, totalTokens = 0, totalErrors = 0;
+  let totalCalls = 0, totalTokens = 0, totalPromptTokens = 0, totalCompletionTokens = 0;
   const maxDailyCalls = Math.max(...dailyStats.map(d => d.total_calls || 0), 1);
 
   const dailyBars = dailyStats.map(d => {
@@ -2013,6 +2422,8 @@ async function renderAdminAnalytics(env, url) {
     const tokens = d.total_tokens || 0;
     totalCalls += calls;
     totalTokens += tokens;
+    totalPromptTokens += d.prompt_tokens || 0;
+    totalCompletionTokens += d.completion_tokens || 0;
     const height = Math.max(2, (calls / maxDailyCalls) * 100);
     const dateShort = d.date ? d.date.substring(5) : '';
     return `<div class="chart-bar-wrap" title="${d.date}: ${calls} requests, ${tokens.toLocaleString()} tokens">
@@ -2033,6 +2444,8 @@ async function renderAdminAnalytics(env, url) {
       <td style="font-weight:500">${model}</td>
       <td><span class="badge badge-slate">${endpoint}</span></td>
       <td style="text-align:center;font-weight:600">${m.calls}</td>
+      <td class="mono" style="color:#60a5fa">${(m.prompt_tokens || 0).toLocaleString()}</td>
+      <td class="mono" style="color:#a78bfa">${(m.completion_tokens || 0).toLocaleString()}</td>
       <td class="mono" style="color:var(--text-secondary)">${(m.tokens || 0).toLocaleString()}</td>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
@@ -2048,6 +2461,8 @@ async function renderAdminAnalytics(env, url) {
   const keyRows = keyStats.map(k => `<tr>
     <td style="font-weight:500">${k.key_name}</td>
     <td style="text-align:center;font-weight:600">${k.calls}</td>
+    <td class="mono" style="color:#60a5fa">${(k.prompt_tokens || 0).toLocaleString()}</td>
+    <td class="mono" style="color:#a78bfa">${(k.completion_tokens || 0).toLocaleString()}</td>
     <td class="mono" style="color:var(--text-secondary)">${(k.tokens || 0).toLocaleString()}</td>
   </tr>`).join('');
 
@@ -2073,11 +2488,21 @@ async function renderAdminAnalytics(env, url) {
         <div class="label">Total Tokens</div>
         <div class="value">${totalTokens.toLocaleString()}</div>
       </div>
+      <div class="stat-card orange">
+        <div class="label">⬇️ Input Tokens</div>
+        <div class="value">${totalPromptTokens.toLocaleString()}</div>
+        <div class="sub">Prompt / Context</div>
+      </div>
       <div class="stat-card purple">
+        <div class="label">⬆️ Output Tokens</div>
+        <div class="value">${totalCompletionTokens.toLocaleString()}</div>
+        <div class="sub">Generated</div>
+      </div>
+      <div class="stat-card cyan">
         <div class="label">Active Keys</div>
         <div class="value">${keyCount}</div>
       </div>
-      <div class="stat-card cyan">
+      <div class="stat-card slate">
         <div class="label">Models Used</div>
         <div class="value">${modelStats.length}</div>
       </div>
@@ -2110,10 +2535,10 @@ async function renderAdminAnalytics(env, url) {
         <div class="table-scroll">
           <table>
             <thead>
-              <tr><th>Model</th><th>Endpoint</th><th style="text-align:center">Calls</th><th>Tokens</th><th>Share</th></tr>
+              <tr><th>Model</th><th>Endpoint</th><th style="text-align:center">Calls</th><th>Input</th><th>Output</th><th>Total</th><th>Share</th></tr>
             </thead>
             <tbody>
-              ${modelRows || '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">No data</td></tr>'}
+              ${modelRows || '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">No data</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -2127,10 +2552,10 @@ async function renderAdminAnalytics(env, url) {
         <div class="table-scroll">
           <table>
             <thead>
-              <tr><th>Key Name</th><th style="text-align:center">Calls</th><th>Tokens</th></tr>
+              <tr><th>Key Name</th><th style="text-align:center">Calls</th><th>Input</th><th>Output</th><th>Total</th></tr>
             </thead>
             <tbody>
-              ${keyRows || '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-muted)">No data</td></tr>'}
+              ${keyRows || '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">No data</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -2263,6 +2688,60 @@ function parseTokens(tokensRaw) {
 
 function tokensToJSON(tokens) {
   return JSON.stringify(tokens.map(t => ({ value: t.value, enabled: t.enabled, name: t.name || "" })));
+}
+
+// ─── Token Selection Strategy ────────────────────────────────────────────
+// In-memory round-robin counters (per-isolate, reset on cold start — acceptable for CF Workers)
+const _roundRobinCounters = {};
+
+async function selectToken(tokens, strategy, providerId, env) {
+  // Filter to enabled tokens, preserving original indices for least-used tracking
+  const enabledTokens = tokens
+    .map((t, i) => ({ ...t, _originalIndex: i }))
+    .filter(t => t.enabled && t.value);
+
+  if (enabledTokens.length === 0) return null;
+  if (enabledTokens.length === 1) return enabledTokens[0];
+
+  switch (strategy) {
+    case 'round-robin': {
+      const counter = (_roundRobinCounters[providerId] || 0);
+      const idx = counter % enabledTokens.length;
+      _roundRobinCounters[providerId] = counter + 1;
+      return enabledTokens[idx];
+    }
+    case 'random': {
+      const idx = Math.floor(Math.random() * enabledTokens.length);
+      return enabledTokens[idx];
+    }
+    case 'least-used': {
+      try {
+        const { results } = await env.DB.prepare(
+          "SELECT token_index, calls FROM token_usage WHERE provider_id = ?"
+        ).bind(providerId).all();
+        const usageMap = {};
+        (results || []).forEach(r => { usageMap[r.token_index] = r.calls || 0; });
+
+        let minCalls = Infinity;
+        let bestTokens = [];
+        for (const t of enabledTokens) {
+          const calls = usageMap[t._originalIndex] || 0;
+          if (calls < minCalls) {
+            minCalls = calls;
+            bestTokens = [t];
+          } else if (calls === minCalls) {
+            bestTokens.push(t);
+          }
+        }
+        return bestTokens[Math.floor(Math.random() * bestTokens.length)];
+      } catch (e) {
+        return enabledTokens[Math.floor(Math.random() * enabledTokens.length)];
+      }
+    }
+    case 'sequential':
+    default:
+      return enabledTokens[0];
+  }
 }
 
 async function renderAdminProviders(env) {
@@ -2428,8 +2907,8 @@ async function renderAdminProviders(env) {
     </div>
 
     <!-- Provider Cards Grid -->
-    <div id="provider-grid" style="display:flex;flex-direction:column;gap:10px;margin-bottom:32px">
-      ${providerCards || '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px;background:var(--bg-card);border-radius:var(--radius-lg);border:1px dashed var(--border-medium)">No providers yet. Click "+ Add Provider" to add your first AI provider.</div>'}
+    <div id="provider-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:32px">
+      ${providerCards || '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px;background:var(--bg-card);border-radius:var(--radius-lg);border:1px dashed var(--border-medium);grid-column:1/-1">No providers yet. Click "+ Add Provider" to add your first AI provider.</div>'}
     </div>
 
     <script>
@@ -2461,6 +2940,8 @@ async function renderAdminProviders(env) {
       .filter-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:500;background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-secondary);cursor:pointer;transition:var(--transition)}
       .filter-btn:hover{border-color:var(--border-medium);color:var(--text-primary)}
       .filter-btn.active{background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);color:var(--accent-blue)}
+      @media(max-width:1100px){#provider-grid{grid-template-columns:repeat(2,1fr)}}
+      @media(max-width:700px){#provider-grid{grid-template-columns:1fr}}
   `;
 
   return new Response(adminLayout("Providers", "providers", content), {
@@ -2701,6 +3182,16 @@ async function renderAdminTokens(env, url) {
   }).join('');
 
   const content = `
+    <style>
+      .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center}
+      .modal-overlay.show{display:flex}
+      .modal{background:var(--bg-secondary);backdrop-filter:blur(24px);border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:28px;width:90%;max-width:500px;box-shadow:0 25px 60px rgba(0,0,0,0.5)}
+      .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+      .modal-header h3{margin:0;font-size:16px;font-weight:700;color:var(--text-primary)}
+      .modal-close{background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer;padding:0;line-height:1;transition:var(--transition)}
+      .modal-close:hover{color:var(--text-primary)}
+    </style>
+
     <div class="page-header">
       <div class="page-header-left">
         <h2>🔑 API Tokens</h2>
@@ -2798,6 +3289,16 @@ async function renderAdminTokens(env, url) {
       </div>
     </div>
 
+    <style>
+      .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center}
+      .modal-overlay.show{display:flex}
+      .modal{background:var(--bg-secondary);backdrop-filter:blur(24px);border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:28px;width:90%;max-width:500px;box-shadow:0 25px 60px rgba(0,0,0,0.5)}
+      .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+      .modal-header h3{margin:0;font-size:16px;font-weight:700;color:var(--text-primary)}
+      .modal-close{background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer;padding:0;line-height:1;transition:var(--transition)}
+      .modal-close:hover{color:var(--text-primary)}
+    </style>
+
     <script>
     function filterTokens() {
       var q = document.getElementById('tokenSearch').value.toLowerCase();
@@ -2816,6 +3317,478 @@ async function renderAdminTokens(env, url) {
   `;
 
   return new Response(adminLayout("API Tokens", "tokens", content), {
+    headers: { "Content-Type": "text/html; charset=UTF-8" }
+  });
+}
+
+// ─── Admin: API Docs Tab ────────────────────────────────────────────────
+
+async function renderAdminDocs(env) {
+  const content = `
+  <style>
+    .docs-section{margin-bottom:40px}
+    .docs-section h2{font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary);display:flex;align-items:center;gap:8px}
+    .docs-section h3{font-size:15px;font-weight:600;margin:20px 0 10px;color:var(--text-primary)}
+    .base-url-box{background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:12px;padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;backdrop-filter:blur(12px)}
+    .base-url-box .url{font-family:'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;color:var(--accent);word-break:break-all}
+    .auth-box{background:rgba(234,179,8,0.08);border:1px solid rgba(234,179,8,0.2);border-radius:12px;padding:16px 20px;margin-bottom:16px}
+    .auth-box .label{font-size:13px;color:var(--text-secondary);margin-bottom:6px}
+    .endpoint-card{background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:12px;margin-bottom:16px;overflow:hidden;backdrop-filter:blur(12px)}
+    .endpoint-header{padding:14px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border-subtle);cursor:pointer;transition:background 0.2s}
+    .endpoint-header:hover{background:rgba(255,255,255,0.03)}
+    .method-badge{padding:4px 10px;border-radius:6px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;min-width:50px;text-align:center}
+    .method-get{background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)}
+    .method-post{background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.3)}
+    .endpoint-path{font-family:'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;color:var(--text-primary)}
+    .endpoint-desc{font-size:13px;color:var(--text-secondary);margin-left:auto}
+    .endpoint-body{padding:0;display:none}
+    .endpoint-body.open{display:block}
+    .endpoint-body-inner{padding:20px}
+    .code-wrapper{position:relative;margin:10px 0}
+    .code-wrapper pre{background:#0d1425;border:1px solid var(--border-subtle);border-radius:8px;padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.5;margin:0;font-family:'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;color:#e2e8f0}
+    .code-wrapper .copy-btn{position:absolute;top:8px;right:8px;background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:500;transition:all 0.2s;z-index:2}
+    .code-wrapper .copy-btn:hover{background:rgba(99,102,241,0.35);transform:scale(1.05)}
+    .code-wrapper .copy-btn.copied{background:rgba(34,197,94,0.2);border-color:rgba(34,197,94,0.3);color:#4ade80}
+    .param-table{width:100%;border-collapse:collapse;margin:10px 0}
+    .param-table th,.param-table td{padding:10px 14px;text-align:left;font-size:13px;border-bottom:1px solid var(--border-subtle)}
+    .param-table th{color:var(--text-secondary);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.5px}
+    .param-table td:first-child{font-family:'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;color:var(--accent);font-size:13px}
+    .param-required{color:#f87171;font-size:11px;font-weight:600}
+    .param-optional{color:var(--text-secondary);font-size:11px}
+    .info-card{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:16px 20px;margin:16px 0}
+    .info-card p{color:var(--text-secondary);font-size:13px;line-height:1.6}
+    .info-card code{background:rgba(99,102,241,0.15);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent)}
+    .format-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+    .format-tab{padding:6px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border-subtle);background:var(--glass-bg);color:var(--text-secondary);transition:all 0.2s}
+    .format-tab.active{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.3);color:var(--accent)}
+    .format-tab:hover{border-color:rgba(99,102,241,0.3)}
+  </style>
+
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">API Documentation</h1>
+      <p class="page-desc">How to authenticate and call your CFRouter endpoints</p>
+    </div>
+  </div>
+
+  <!-- Base URL -->
+  <div class="docs-section">
+    <h2>🔗 Base URL</h2>
+    <div class="base-url-box">
+      <span class="url" id="baseUrl"></span>
+      <button class="copy-btn" onclick="copyText(document.getElementById('baseUrl').textContent)">📋 Copy</button>
+    </div>
+  </div>
+
+  <!-- Authentication -->
+  <div class="docs-section">
+    <h2>🔐 Authentication</h2>
+    <div class="auth-box">
+      <div class="label">Include your API key in the Authorization header:</div>
+      <div class="code-wrapper">
+        <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+        <pre><code>Authorization: Bearer sk-your-api-key-here</code></pre>
+      </div>
+    </div>
+    <div class="info-card">
+      <p>Create API tokens from the <a href="/admin/tokens" style="color:var(--accent)">Tokens</a> page. Each request must include a valid API key in the <code>Authorization</code> header.</p>
+    </div>
+  </div>
+
+  <!-- Endpoints -->
+  <div class="docs-section">
+    <h2>📡 Endpoints</h2>
+
+    <!-- GET /v1/models -->
+    <div class="endpoint-card">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/v1/models</span>
+        <span class="endpoint-desc">List all available models</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-body-inner">
+          <h3>cURL</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>curl -H "Authorization: Bearer sk-your-api-key-here" \\
+  https://YOUR_WORKER.workers.dev/v1/models</code></pre>
+          </div>
+          <h3>Response</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>{
+  "object": "list",
+  "data": [
+    { "id": "openai/gpt-4o", "object": "model", "owned_by": "openai" },
+    { "id": "anthropic/claude-3.5-sonnet", "object": "model", "owned_by": "anthropic" }
+  ]
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /v1/chat/completions -->
+    <div class="endpoint-card">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/v1/chat/completions</span>
+        <span class="endpoint-desc">OpenAI-compatible chat completion</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-body-inner">
+          <h3>Parameters</h3>
+          <table class="param-table">
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>model</td><td>string</td><td><span class="param-required">Required</span></td><td>Model ID (e.g. <code>openai/gpt-4o</code>)</td></tr>
+            <tr><td>messages</td><td>array</td><td><span class="param-required">Required</span></td><td>Array of message objects with <code>role</code> and <code>content</code></td></tr>
+            <tr><td>temperature</td><td>number</td><td><span class="param-optional">Optional</span></td><td>Sampling temperature (0-2). Default: 1</td></tr>
+            <tr><td>max_tokens</td><td>integer</td><td><span class="param-optional">Optional</span></td><td>Maximum tokens to generate</td></tr>
+            <tr><td>stream</td><td>boolean</td><td><span class="param-optional">Optional</span></td><td>Enable SSE streaming. Default: false</td></tr>
+          </table>
+          <h3>cURL</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>curl -X POST https://YOUR_WORKER.workers.dev/v1/chat/completions \\
+  -H "Authorization: Bearer sk-your-api-key-here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "openai/gpt-4o",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello!"}
+    ],
+    "temperature": 0.7,
+    "max_tokens": 1024
+  }'</code></pre>
+          </div>
+          <h3>Response</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "model": "openai/gpt-4o",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "Hello! How can I help you today?" },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": { "prompt_tokens": 25, "completion_tokens": 10, "total_tokens": 35 }
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /v1/messages (Anthropic) -->
+    <div class="endpoint-card">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/v1/messages</span>
+        <span class="endpoint-desc">Anthropic Messages API format</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-body-inner">
+          <h3>Parameters</h3>
+          <table class="param-table">
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>model</td><td>string</td><td><span class="param-required">Required</span></td><td>Model ID (e.g. <code>anthropic/claude-3.5-sonnet</code>)</td></tr>
+            <tr><td>messages</td><td>array</td><td><span class="param-required">Required</span></td><td>Array of message objects with <code>role</code> and <code>content</code></td></tr>
+            <tr><td>max_tokens</td><td>integer</td><td><span class="param-required">Required</span></td><td>Maximum tokens to generate</td></tr>
+            <tr><td>system</td><td>string</td><td><span class="param-optional">Optional</span></td><td>System prompt</td></tr>
+            <tr><td>stream</td><td>boolean</td><td><span class="param-optional">Optional</span></td><td>Enable SSE streaming. Default: false</td></tr>
+          </table>
+          <h3>cURL</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>curl -X POST https://YOUR_WORKER.workers.dev/v1/messages \\
+  -H "Authorization: Bearer sk-your-api-key-here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "anthropic/claude-3.5-sonnet",
+    "max_tokens": 1024,
+    "system": "You are a helpful assistant.",
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ]
+  }'</code></pre>
+          </div>
+          <h3>Response</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>{
+  "id": "msg_abc123",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    { "type": "text", "text": "Hello! How can I help you today?" }
+  ],
+  "model": "anthropic/claude-3.5-sonnet",
+  "stop_reason": "end_turn",
+  "usage": { "input_tokens": 25, "output_tokens": 10 }
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /v1beta/models/{model}:generateContent (Gemini) -->
+    <div class="endpoint-card">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/v1beta/models/{model}:generateContent</span>
+        <span class="endpoint-desc">Google Gemini API format</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-body-inner">
+          <h3>Parameters</h3>
+          <table class="param-table">
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>contents</td><td>array</td><td><span class="param-required">Required</span></td><td>Array of content parts with <code>role</code> and <code>parts</code></td></tr>
+            <tr><td>generationConfig</td><td>object</td><td><span class="param-optional">Optional</span></td><td>Configuration: <code>temperature</code>, <code>maxOutputTokens</code>, etc.</td></tr>
+            <tr><td>systemInstruction</td><td>object</td><td><span class="param-optional">Optional</span></td><td>System prompt as <code>{ "parts": [{ "text": "..." }] }</code></td></tr>
+          </table>
+          <h3>cURL</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>curl -X POST "https://YOUR_WORKER.workers.dev/v1beta/models/gemini-2.0-flash:generateContent" \\
+  -H "Authorization: Bearer sk-your-api-key-here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Hello!" }] }
+    ],
+    "generationConfig": {
+      "temperature": 0.7,
+      "maxOutputTokens": 1024
+    }
+  }'</code></pre>
+          </div>
+          <h3>Response</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>{
+  "candidates": [
+    {
+      "content": {
+        "parts": [{ "text": "Hello! How can I help you today?" }],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 25,
+    "candidatesTokenCount": 10,
+    "totalTokenCount": 35
+  }
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /v1/embeddings -->
+    <div class="endpoint-card">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/v1/embeddings</span>
+        <span class="endpoint-desc">Create embeddings</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-body-inner">
+          <h3>Parameters</h3>
+          <table class="param-table">
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>model</td><td>string</td><td><span class="param-required">Required</span></td><td>Embedding model ID</td></tr>
+            <tr><td>input</td><td>string|array</td><td><span class="param-required">Required</span></td><td>Text(s) to embed</td></tr>
+          </table>
+          <h3>cURL</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>curl -X POST https://YOUR_WORKER.workers.dev/v1/embeddings \\
+  -H "Authorization: Bearer sk-your-api-key-here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "openai/text-embedding-3-small",
+    "input": "The quick brown fox jumps over the lazy dog"
+  }'</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GET /v1/health -->
+    <div class="endpoint-card">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/v1/health</span>
+        <span class="endpoint-desc">Health check</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-body-inner">
+          <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px">No authentication required. Returns provider health status.</p>
+          <h3>cURL</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>curl https://YOUR_WORKER.workers.dev/v1/health</code></pre>
+          </div>
+          <h3>Response</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>{
+  "status": "healthy",
+  "providers": [
+    { "name": "OpenAI", "status": "healthy", "models": 5 }
+  ]
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model ID Format -->
+  <div class="docs-section">
+    <h2>🏷️ Model ID Format</h2>
+    <div class="info-card">
+      <p>Models are addressed using the format <code>provider-slug/model-name</code>. The provider slug is the name you gave when adding the provider.</p>
+    </div>
+    <div class="code-wrapper">
+      <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+      <pre><code>openai/gpt-4o
+anthropic/claude-3.5-sonnet
+google/gemini-2.0-flash
+my-provider/llama-3-8b</code></pre>
+    </div>
+    <div class="info-card">
+      <p>Use <a href="/admin/aliases" style="color:var(--accent)">Model Aliases</a> to create short names like <code>gpt-4o</code> that map to full model IDs.</p>
+    </div>
+  </div>
+
+  <!-- Streaming -->
+  <div class="docs-section">
+    <h2>⚡ Streaming</h2>
+    <div class="info-card">
+      <p>Set <code>"stream": true</code> in your request to receive Server-Sent Events (SSE). The response will be streamed chunk by chunk. Works with all three API formats (OpenAI, Anthropic, Gemini).</p>
+    </div>
+    <h3>Streaming cURL Example</h3>
+    <div class="code-wrapper">
+      <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+      <pre><code>curl -N -X POST https://YOUR_WORKER.workers.dev/v1/chat/completions \\
+  -H "Authorization: Bearer sk-your-api-key-here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "openai/gpt-4o",
+    "messages": [{"role": "user", "content": "Write a haiku"}],
+    "stream": true
+  }'</code></pre>
+    </div>
+  </div>
+
+  <!-- JavaScript / Python Examples -->
+  <div class="docs-section">
+    <h2>💻 Quick Examples</h2>
+
+    <h3>JavaScript (fetch)</h3>
+    <div class="code-wrapper">
+      <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+      <pre><code>const response = await fetch("https://YOUR_WORKER.workers.dev/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer sk-your-api-key-here",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    model: "openai/gpt-4o",
+    messages: [{ role: "user", content: "Hello!" }]
+  })
+});
+const data = await response.json();
+console.log(data.choices[0].message.content);</code></pre>
+    </div>
+
+    <h3>Python (requests)</h3>
+    <div class="code-wrapper">
+      <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+      <pre><code>import requests
+
+response = requests.post(
+    "https://YOUR_WORKER.workers.dev/v1/chat/completions",
+    headers={
+        "Authorization": "Bearer sk-your-api-key-here",
+        "Content-Type": "application/json"
+    },
+    json={
+        "model": "openai/gpt-4o",
+        "messages": [{"role": "user", "content": "Hello!"}]
+    }
+)
+data = response.json()
+print(data["choices"][0]["message"]["content"])</code></pre>
+    </div>
+
+    <h3>OpenAI Python SDK</h3>
+    <div class="code-wrapper">
+      <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+      <pre><code>from openai import OpenAI
+
+client = OpenAI(
+    api_key="sk-your-api-key-here",
+    base_url="https://YOUR_WORKER.workers.dev/v1"
+)
+
+response = client.chat.completions.create(
+    model="openai/gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)</code></pre>
+    </div>
+  </div>
+
+  <script>
+  // Set base URL dynamically
+  document.getElementById('baseUrl').textContent = window.location.origin;
+
+  // Toggle endpoint body
+  function toggleEndpoint(header) {
+    const body = header.nextElementSibling;
+    body.classList.toggle('open');
+  }
+
+  // Copy code to clipboard
+  function copyCode(btn) {
+    const code = btn.parentElement.querySelector('code');
+    navigator.clipboard.writeText(code.textContent).then(() => {
+      btn.textContent = '✅ Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = '📋 Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+
+  // Copy plain text
+  function copyText(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = event.target;
+      btn.textContent = '✅ Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = '📋 Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+  </script>
+  `;
+
+  return new Response(adminLayout("API Docs", "docs", content), {
     headers: { "Content-Type": "text/html; charset=UTF-8" }
   });
 }
@@ -2862,22 +3835,33 @@ async function renderProviderDetail(id, env, url) {
     </div>
   `).join("");
 
-  // Model tags with full details
-  const modelTags = Array.isArray(models) && models.length > 0
-    ? models.map(m => {
-        const modelId = typeof m === "string" ? m : m.id;
+  // Model rows with full details
+  const providerSlugVal = p.slug || providerSlug(p.name);
+  const modelRows = Array.isArray(models) && models.length > 0
+    ? models.map((m, idx) => {
+        const rawId = typeof m === "string" ? m : m.id;
+        const fullId = `${providerSlugVal}/${rawId}`;
         const contextWindow = typeof m === "object" ? m.context_window : null;
         const caps = typeof m === "object" ? m.capabilities : {};
         const capBadges = [];
-        if (caps.reasoning) capBadges.push('<span style="color:var(--accent-purple);font-size:10px">🧠</span>');
-        if (caps.vision) capBadges.push('<span style="color:var(--accent-cyan);font-size:10px">👁️</span>');
-        return `<span class="model-tag" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);border-radius:8px;font-size:12px">
-          <span style="font-weight:600">${modelId}</span>
-          ${contextWindow ? `<span style="color:var(--text-muted);font-size:10px">${(contextWindow/1000).toFixed(0)}k</span>` : ''}
-          ${capBadges.join('')}
-        </span>`;
+        if (caps.reasoning) capBadges.push('<span class="badge badge-purple" style="font-size:10px">🧠 Reasoning</span>');
+        if (caps.vision) capBadges.push('<span class="badge badge-cyan" style="font-size:10px">👁️ Vision</span>');
+        return `<div class="model-row" id="model-row-${idx}" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);transition:var(--transition)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:var(--text-primary);font-family:'SF Mono',Consolas,monospace;margin-bottom:4px;word-break:break-all">${fullId}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              ${contextWindow ? `<span class="badge badge-slate" style="font-size:10px">${(contextWindow/1000).toFixed(0)}k ctx</span>` : ''}
+              ${capBadges.join('')}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <span id="model-status-${idx}" style="font-size:14px;width:20px;text-align:center"></span>
+            <button type="button" class="btn-icon" onclick="copyModelId('${fullId}', this)" title="Copy model ID">📋</button>
+            <button type="button" class="btn-icon fetch" onclick="testSingleModel(${p.id}, '${rawId}', ${idx})" title="Test model" id="test-btn-${idx}">▶</button>
+          </div>
+        </div>`;
       }).join("")
-    : '<span style="color:var(--text-muted);font-size:12px">No models fetched yet. Click "Fetch Models" to discover available models.</span>';
+    : '<span style="color:var(--text-muted);font-size:12px;padding:12px 0;display:block;grid-column:1/-1">No models fetched yet. Click "Fetch Models" to discover available models.</span>';
 
   const content = `
     <div class="page-header">
@@ -2892,10 +3876,15 @@ async function renderProviderDetail(id, env, url) {
         <p style="font-family:'SF Mono',Consolas,monospace;font-size:12px;color:var(--text-muted);margin-top:4px">${p.base_url}</p>
       </div>
       <div class="page-header-actions">
+        <button type="button" class="btn btn-secondary" onclick='openEditProviderModal(${p.id},${JSON.stringify(p.name)},${JSON.stringify(p.slug || providerSlug(p.name))},${JSON.stringify(p.base_url)})'>✏️ Edit</button>
+        <form method="POST" action="/admin/providers/delete" onsubmit="return confirm('Delete this provider and all its tokens? This cannot be undone.')" style="display:inline">
+          <input type="hidden" name="id" value="${p.id}">
+          <button type="submit" class="btn btn-danger">🗑️ Delete</button>
+        </form>
         <form method="POST" action="/admin/providers/toggle-custom" style="display:inline">
           <input type="hidden" name="id" value="${p.id}">
           <button type="submit" class="btn ${p.enabled ? 'btn-danger' : 'btn-primary'}">
-            ${p.enabled ? ' Disable Provider' : ' Enable Provider'}
+            ${p.enabled ? '⏸ Disable' : '▶ Enable'}
           </button>
         </form>
       </div>
@@ -2922,23 +3911,6 @@ async function renderProviderDetail(id, env, url) {
       </div>
     </div>
 
-    <!-- Models Section -->
-    <div class="form-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h3 style="margin:0;display:flex;align-items:center;gap:8px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-          Available Models
-        </h3>
-        <form method="POST" action="/admin/providers/fetch-models" style="display:inline">
-          <input type="hidden" name="url" value="${p.base_url}">
-          <input type="hidden" name="type" value="custom">
-          <input type="hidden" name="id" value="${p.id}">
-          <button type="submit" class="btn btn-sm btn-primary">↻ Fetch Models</button>
-        </form>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">${modelTags}</div>
-    </div>
-
     <!-- Tokens Section -->
     <div class="form-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -2953,20 +3925,49 @@ async function renderProviderDetail(id, env, url) {
       </div>
     </div>
 
-    <!-- Actions Section -->
+    <!-- Models Section -->
     <div class="form-card">
-      <h3 style="margin-bottom:16px;display:flex;align-items:center;gap:8px">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        Provider Actions
-      </h3>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button type="button" class="btn btn-secondary" onclick='openEditProviderModal(${p.id},${JSON.stringify(p.name)},${JSON.stringify(p.slug || providerSlug(p.name))},${JSON.stringify(p.base_url)})'>✏️ Edit Provider</button>
-        <form method="POST" action="/admin/providers/delete" onsubmit="return confirm('Delete this provider and all its tokens? This cannot be undone.')" style="display:inline">
-          <input type="hidden" name="id" value="${p.id}">
-          <button type="submit" class="btn btn-danger">🗑️ Delete Provider</button>
-        </form>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          Available Models
+          <span style="font-size:12px;font-weight:500;color:var(--text-muted)">${Array.isArray(models) ? models.length : 0}</span>
+        </h3>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="fetchModelsAjax()" id="fetch-models-btn">↻ Fetch Models</button>
+          ${Array.isArray(models) && models.length > 1 ? '<button type="button" class="btn btn-sm btn-primary" onclick="testAllModels()" id="test-all-btn">🧪 Test All</button>' : ''}
+        </div>
+      </div>
+      <div id="models-list" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${modelRows}</div>
+      <div id="test-all-progress" style="display:none;margin-top:16px;padding:12px 16px;border-radius:10px;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.15)"></div>
+    </div>
+
+    <!-- Token Selection Strategy -->
+    ${totalCount > 1 ? `
+    <div class="form-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+          Token Selection Strategy
+        </h3>
+      </div>
+      <form method="POST" action="/admin/providers/set-token-selection" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <input type="hidden" name="provider_id" value="${p.id}">
+        <div style="flex:1;min-width:200px">
+          <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:6px">When multiple tokens are enabled, select the next token using:</label>
+          <select name="token_selection" style="width:100%;padding:10px 14px;background:var(--glass-bg);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);font-size:13px;cursor:pointer;transition:var(--transition)" onchange="this.form.submit()">
+            <option value="round-robin" ${(p.token_selection || 'round-robin') === 'round-robin' ? 'selected' : ''}>🔄 Round Robin — cycle through tokens sequentially</option>
+            <option value="random" ${p.token_selection === 'random' ? 'selected' : ''}>🎲 Random — pick a random token each time</option>
+            <option value="least-used" ${p.token_selection === 'least-used' ? 'selected' : ''}>📊 Least Used — pick the token with fewest requests</option>
+            <option value="sequential" ${p.token_selection === 'sequential' ? 'selected' : ''}>➡️ Sequential — always use the first enabled token</option>
+          </select>
+        </div>
+      </form>
+      <div style="margin-top:12px;padding:12px 16px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px;font-size:12px;color:var(--text-secondary);line-height:1.6">
+        <strong style="color:var(--accent)">ℹ️ Note:</strong> Round Robin counters reset on worker cold start. For consistent distribution across requests, consider using "Least Used" which tracks usage in the database.
       </div>
     </div>
+    ` : ''}
 
     <!-- Edit Provider Modal -->
     <div id="editProviderModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('show')">
@@ -3057,10 +4058,22 @@ async function renderProviderDetail(id, env, url) {
       .modal-header h3{margin:0;font-size:16px;font-weight:700;color:var(--text-primary)}
       .modal-close{background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer;padding:0;line-height:1;transition:var(--transition)}
       .modal-close:hover{color:var(--text-primary)}
-      .model-tag{display:inline-block;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(255,255,255,0.04);color:var(--text-secondary);border:1px solid var(--border-subtle);white-space:nowrap;letter-spacing:0.2px}
+      @keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes spin{to{transform:rotate(360deg)}}
+      @keyframes dotPulse{0%,80%,100%{opacity:0.3}40%{opacity:1}}
+      @keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+      @keyframes toastOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(40px)}}
+      .fetch-spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border-subtle);border-top-color:var(--accent-blue);border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle}
+      .test-dot-pulse{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent-blue);animation:dotPulse 1.4s infinite ease-in-out;margin-right:4px;vertical-align:middle}
+      @media(max-width:1100px){#models-list{grid-template-columns:repeat(2,1fr)}}
+      @media(max-width:700px){#models-list{grid-template-columns:1fr}}
     </style>
 
     <script>
+    const PROVIDER_ID = ${p.id};
+    const PROVIDER_URL = '${encodeURIComponent(p.base_url)}';
+    const PROVIDER_SLUG = '${providerSlugVal}';
+
     function openEditProviderModal(id, name, slug, url) {
       document.getElementById('ep-id').value = id;
       document.getElementById('ep-name').value = name;
@@ -3090,45 +4103,185 @@ async function renderProviderDetail(id, env, url) {
       document.getElementById('addTokenModal').classList.add('show');
     }
 
-    // Auto-fetch models if none are loaded yet
-    (function() {
-      const modelsContainer = document.querySelector('.form-card .model-tag')?.parentElement;
-      const hasNoModels = modelsContainer && modelsContainer.textContent.includes('No models fetched yet');
-      if (hasNoModels && ${p.enabled ? 'true' : 'false'}) {
-        autoFetchModels();
-      }
-    })();
+    // ── Copy Model ID ──
+    function copyModelId(id, btn) {
+      navigator.clipboard.writeText(id).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = '✅';
+        setTimeout(() => btn.textContent = orig, 1500);
+      });
+    }
 
-    async function autoFetchModels() {
-      const modelsContainer = document.querySelector('[style*="flex-wrap"]');
-      if (modelsContainer) {
-        modelsContainer.innerHTML = '<span style="color:var(--text-muted);font-size:12px">⏳ Fetching models...</span>';
-      }
+    // ── Fetch Models (AJAX) ──
+    async function fetchModelsAjax() {
+      const btn = document.getElementById('fetch-models-btn');
+      const list = document.getElementById('models-list');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="fetch-spinner"></span> Fetching...';
+      btn.style.opacity = '0.6';
+      list.innerHTML = '<div style="padding:16px;text-align:center"><div class="fetch-spinner" style="margin:0 auto"></div><div style="color:var(--text-muted);font-size:12px;margin-top:8px">Fetching models from provider...</div></div>';
       try {
         const resp = await fetch('/admin/providers/fetch-models', {
           method: 'POST',
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: 'url=${encodeURIComponent(p.base_url)}&type=custom&id=${p.id}'
+          body: 'url=' + PROVIDER_URL + '&type=custom&id=' + PROVIDER_ID
         });
         const data = await resp.json();
         if (resp.ok && data.models && data.models.length > 0) {
-          // Reload the page to show updated models
           window.location.reload();
-        } else if (data.error) {
-          if (modelsContainer) {
-            modelsContainer.innerHTML = '<span style="color:var(--text-red);font-size:12px">Failed: ' + data.error + '</span>';
-          }
         } else {
-          if (modelsContainer) {
-            modelsContainer.innerHTML = '<span style="color:var(--text-red);font-size:12px">No models found</span>';
-          }
+          list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--accent-rose);font-size:12px">' + (data.error || 'No models found') + '</div>';
+          btn.disabled = false;
+          btn.innerHTML = '↻ Fetch Models';
+          btn.style.opacity = '1';
         }
       } catch (e) {
-        if (modelsContainer) {
-          modelsContainer.innerHTML = '<span style="color:var(--text-red);font-size:12px">Error: ' + e.message + '</span>';
-        }
+        list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--accent-rose);font-size:12px">Error: ' + e.message + '</div>';
+        btn.disabled = false;
+        btn.innerHTML = '↻ Fetch Models';
+        btn.style.opacity = '1';
       }
     }
+
+    // ── Toast Helper ──
+    function showToast(message, type) {
+      const existing = document.getElementById('test-toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.id = 'test-toast';
+      toast.style.cssText = 'position:fixed;top:24px;right:24px;z-index:999;padding:14px 20px;border-radius:12px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 8px 32px rgba(0,0,0,0.4);animation:toastIn 0.3s ease;max-width:400px;word-break:break-word;backdrop-filter:blur(12px)';
+      if (type === 'success') {
+        toast.style.background = 'rgba(16,185,129,0.9)';
+        toast.innerHTML = '✅ ' + message;
+      } else {
+        toast.style.background = 'rgba(244,63,94,0.9)';
+        toast.innerHTML = '❌ ' + message;
+      }
+      document.body.appendChild(toast);
+      setTimeout(() => { toast.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => toast.remove(), 300); }, 3000);
+    }
+
+    // ── Test Single Model ──
+    async function testSingleModel(providerId, modelId, idx) {
+      const btn = document.getElementById('test-btn-' + idx);
+      const status = document.getElementById('model-status-' + idx);
+      const row = document.getElementById('model-row-' + idx);
+      btn.disabled = true;
+      btn.innerHTML = '⏳';
+      if (status) status.innerHTML = '';
+      if (row) { row.style.borderColor = 'rgba(59,130,246,0.3)'; }
+      try {
+        const resp = await fetch('/admin/providers/test-model', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'provider_id=' + providerId + '&model_id=' + encodeURIComponent(modelId)
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          if (row) { row.style.borderColor = 'rgba(16,185,129,0.3)'; row.style.background = 'rgba(16,185,129,0.04)'; }
+          if (status) status.innerHTML = '✅';
+          btn.innerHTML = '✅';
+          showToast(modelId + ' is working — ' + data.reply.substring(0, 60), 'success');
+        } else {
+          if (row) { row.style.borderColor = 'rgba(244,63,94,0.3)'; row.style.background = 'rgba(244,63,94,0.04)'; }
+          if (status) status.innerHTML = '❌';
+          btn.innerHTML = '❌';
+          showToast(modelId + ' failed — ' + (data.error || 'Unknown error').substring(0, 60), 'error');
+        }
+      } catch (e) {
+        if (row) { row.style.borderColor = 'rgba(244,63,94,0.3)'; }
+        if (status) status.innerHTML = '❌';
+        btn.innerHTML = '❌';
+        showToast(modelId + ' error — ' + e.message, 'error');
+      }
+      btn.disabled = false;
+      setTimeout(() => { btn.innerHTML = '▶'; }, 2000);
+    }
+
+    // ── Test All Models (Sequential) ──
+    async function testAllModels() {
+      const testAllBtn = document.getElementById('test-all-btn');
+      const progressDiv = document.getElementById('test-all-progress');
+      const modelRows = document.querySelectorAll('.model-row');
+      if (!modelRows.length) return;
+
+      testAllBtn.disabled = true;
+      testAllBtn.innerHTML = '⏳ Testing...';
+      progressDiv.style.display = 'block';
+      progressDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary)"><div class="fetch-spinner"></div><span id="test-all-status">Preparing tests...</span></div>';
+
+      // Collect model IDs from the rows
+      const modelElements = [];
+      modelRows.forEach((row, i) => {
+        const idEl = row.querySelector('[style*="font-family"]');
+        if (idEl) {
+          const fullId = idEl.textContent.trim();
+          const rawId = fullId.replace(PROVIDER_SLUG + '/', '');
+          modelElements.push({ rawId, fullId, idx: i });
+        }
+      });
+
+      let passed = 0, failed = 0;
+
+      for (let i = 0; i < modelElements.length; i++) {
+        const m = modelElements[i];
+        const statusEl = document.getElementById('test-all-status');
+        statusEl.textContent = 'Testing ' + (i+1) + '/' + modelElements.length + ': ' + m.rawId;
+
+        // Highlight current row
+        const row = document.getElementById('model-row-' + m.idx);
+        if (row) { row.style.borderColor = 'rgba(59,130,246,0.4)'; row.style.background = 'rgba(59,130,246,0.06)'; }
+
+        try {
+          const resp = await fetch('/admin/providers/test-model', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'provider_id=' + PROVIDER_ID + '&model_id=' + encodeURIComponent(m.rawId)
+          });
+          const data = await resp.json();
+          if (data.ok) {
+            passed++;
+            if (row) { row.style.borderColor = 'rgba(16,185,129,0.3)'; row.style.background = 'rgba(16,185,129,0.04)'; }
+            const btn = document.getElementById('test-btn-' + m.idx);
+            if (btn) btn.innerHTML = '✅';
+            const status = document.getElementById('model-status-' + m.idx);
+            if (status) status.innerHTML = '✅';
+          } else {
+            failed++;
+            if (row) { row.style.borderColor = 'rgba(244,63,94,0.3)'; row.style.background = 'rgba(244,63,94,0.04)'; }
+            const btn = document.getElementById('test-btn-' + m.idx);
+            if (btn) btn.innerHTML = '❌';
+            const status = document.getElementById('model-status-' + m.idx);
+            if (status) status.innerHTML = '❌';
+          }
+        } catch (e) {
+          failed++;
+          if (row) { row.style.borderColor = 'rgba(244,63,94,0.3)'; }
+          const btn = document.getElementById('test-btn-' + m.idx);
+          if (btn) btn.innerHTML = '❌';
+          const status = document.getElementById('model-status-' + m.idx);
+          if (status) status.innerHTML = '❌';
+        }
+        // Small delay between tests
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      // Final summary toast
+      const statusEl = document.getElementById('test-all-status');
+      statusEl.innerHTML = '<span style="color:var(--accent-green)">' + passed + ' passed</span> · <span style="color:' + (failed > 0 ? 'var(--accent-rose)' : 'var(--text-muted)') + '">' + failed + ' failed</span> · ' + modelElements.length + ' total';
+      testAllBtn.disabled = false;
+      testAllBtn.innerHTML = '🧪 Test All';
+      showToast(passed + '/' + modelElements.length + ' models working' + (failed > 0 ? ' (' + failed + ' failed)' : ''), failed > 0 ? 'error' : 'success');
+    }
+
+    // Auto-fetch models if none are loaded yet
+    (function() {
+      const list = document.getElementById('models-list');
+      const hasNoModels = list && list.textContent.includes('No models fetched yet');
+      if (hasNoModels && ${p.enabled ? 'true' : 'false'}) {
+        fetchModelsAjax();
+      }
+    })();
     </script>
   `;
 

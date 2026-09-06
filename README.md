@@ -8,6 +8,20 @@
 
 ---
 
+## 📑 Table of Contents
+
+| Section | Description |
+|---------|-------------|
+| [What is CFRouter?](#what-is-cfrouter) | Overview of the project |
+| [Quick Start (CLI)](#-quick-start) | For developers comfortable with the terminal |
+| [Install via Cloudflare Dashboard](#️-install-via-cloudflare-dashboard-no-cli-required) | Deploy using only the web interface |
+| [Features](#-features) | Full feature list |
+| [API Reference](#-api-reference) | Endpoint documentation |
+| [Configuration](#-configuration) | Advanced settings |
+| [Development](#️-development) | Local development guide |
+
+---
+
 ## What is CFRouter?
 
 CFRouter is a **self-hosted AI API gateway** built as a single Cloudflare Worker. It acts as a **reverse proxy** and **load balancer** for LLM providers like OpenAI, Anthropic, Google Gemini, and any OpenAI-compatible API — giving you one unified endpoint for all your AI workloads.
@@ -22,8 +36,7 @@ If you're building with **AI agents** (VSCode Copilot, Cline, Continue, Cursor),
 |---|---|
 | **OpenAI-Compatible API** | Drop-in replacement for OpenAI's API — works with any client that speaks the `/v1/chat/completions` protocol |
 | **Multi-Provider Load Balancing** | Round-robin routing across multiple AI providers and API keys |
-| **Model Aliases** | Map short names (e.g. `gpt-4o`) to full model IDs (`openai/gpt-4o`) |
-| **Admin Dashboard** | Built-in web UI for managing providers, API keys, aliases, and analytics |
+| **Admin Dashboard** | Built-in web UI for managing providers, API keys, and analytics |
 | **Usage Tracking** | Per-key, per-model token usage analytics in Cloudflare D1 |
 | **Streaming Support** | Full SSE streaming support with transparent response transformation |
 | **Health Monitoring** | Real-time provider health status and endpoint availability |
@@ -94,6 +107,166 @@ Your gateway is live at `https://cfrouter.<your-subdomain>.workers.dev` 🎉
 
 ---
 
+## 🖥️ Install via Cloudflare Dashboard (No CLI Required)
+
+> This guide is for users who prefer to deploy entirely through the Cloudflare web interface — no terminal or Wrangler CLI needed.
+
+### Prerequisites
+
+- A [Cloudflare account](https://dash.cloudflare.com/sign-up) (free tier is fine)
+- The `src/index.js` file from this project
+- A text editor (Notepad, TextEdit, VSCode, etc.)
+
+### Step 1: Log in to Cloudflare
+
+1. Open your browser and go to [dash.cloudflare.com](https://dash.cloudflare.com)
+2. Sign in to your account
+
+### Step 2: Create a D1 Database
+
+1. In the left sidebar, click **Workers & Pages**
+2. Select the **D1** tab
+3. Click **Create database**
+4. Enter a name (e.g. `cfrouter-db`)
+5. Click **Create**
+6. ⚠️ **Important:** Copy the **Database ID** — you'll need it later
+
+### Step 3: Create a Worker
+
+1. In the left sidebar, click **Workers & Pages**
+2. Click **Create application**
+3. Select the **Workers** tab
+4. Click **Create Worker**
+5. Enter a name for your Worker (e.g. `cfrouter`)
+6. Click **Deploy**
+
+### Step 4: Add the Code
+
+1. After creating the Worker, click **Edit code**
+2. In the online editor, **delete all** the default code
+3. Paste the entire contents of `src/index.js` from this project
+4. Click **Save and deploy**
+
+> 💡 **Tip:** If you don't have `src/index.js` yet:
+> - Go to [github.com/barivan/cfrouter](https://github.com/barivan/cfrouter)
+> - Click **Code** → **Download ZIP**
+> - Extract the archive
+> - Find `src/index.js` inside
+
+### Step 5: Connect the Database to Your Worker
+
+1. On your Worker's page, go to the **Settings** tab
+2. Find the **Bindings** section
+3. Click **Add binding**
+4. Select **D1 Database** as the binding type
+5. Fill in:
+   - **Variable name:** `DB`
+   - **D1 database:** Select the database you created in Step 2 (`cfrouter-db`)
+6. Click **Deploy**
+
+### Step 6: Set Environment Variables (Secrets)
+
+1. Still on the Worker's page, go to the **Settings** tab
+2. Find the **Variables and Secrets** section
+3. Click **Add variable**
+
+**Secret 1 — Admin password:**
+- **Variable name:** `ADMIN_PASSWORD`
+- **Value:** Enter a strong password
+- ✅ Check the **Encrypt** box (important!)
+- Click **Add variable**
+
+**Secret 2 — Session key:**
+- Click **Add variable** again
+- **Variable name:** `SESSION_SECRET`
+- **Value:** Enter a long random string (e.g. `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6`)
+- ✅ Check the **Encrypt** box
+- Click **Add variable**
+
+> 💡 **Tip:** To generate a random string, use [random.org/string](https://www.random.org/strings/) — generate a 32-character string.
+
+> **Alternative: Setup Wizard** — If you skip this step, you can set these values through the web-based Setup Wizard at `/setup` on your first visit. The wizard will guide you through creating your admin password and session secret directly in the browser.
+
+### Step 7: Verify Your Worker is Live
+
+1. Go to the **Triggers** tab on your Worker's page
+2. Find the **Domains & Routes** section
+3. Your Worker is available at an address like `cfrouter.your-subdomain.workers.dev`
+4. Test by opening this URL in your browser:
+   ```
+   https://cfrouter.your-subdomain.workers.dev/v1/health
+   ```
+
+### Step 8: Access the Admin Panel
+
+1. Open this URL in your browser:
+   ```
+   https://cfrouter.your-subdomain.workers.dev/admin
+   ```
+2. Log in with the password you set in Step 6
+
+### Step 9: Add Your First Provider
+
+1. Click **Providers** in the left sidebar
+2. Click **+ Add Provider**
+3. Fill in the details:
+   - **Name:** Any name you like (e.g. "OpenAI" or "My Anthropic")
+   - **Base URL:** The provider's API base URL
+     - OpenAI: `https://api.openai.com/v1`
+     - Anthropic: `https://api.anthropic.com/v1`
+     - Google Gemini: `https://generativelanguage.googleapis.com/v1beta`
+   - **API Keys:** Enter your API keys (one per line)
+4. Click **Fetch Models** to discover available models
+5. Click **Save**
+
+### Step 10: Create an API Token
+
+1. Click **Tokens** in the left sidebar
+2. Click **+ Create Token**
+3. Enter a name (e.g. "VSCode" or "My App")
+4. Click **Create Token**
+5. ⚠️ **Important:** Copy the token **now** — it will only be shown once!
+
+### Step 11: Test and Use
+
+```bash
+curl -X POST https://cfrouter.your-subdomain.workers.dev/v1/chat/completions \
+  -H "Authorization: Bearer sk-your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+---
+
+### 📋 Quick Reference — Dashboard Installation Steps
+
+| Step | Action |
+|------|--------|
+| 1 | Log in to [dash.cloudflare.com](https://dash.cloudflare.com) |
+| 2 | Create a D1 database → copy Database ID |
+| 3 | Create a new Worker |
+| 4 | Paste `src/index.js` code in the online editor |
+| 5 | Connect D1 to Worker (Binding: `DB`) |
+| 6 | Set `ADMIN_PASSWORD` and `SESSION_SECRET` |
+| 7 | Verify Worker is live at its URL |
+| 8 | Access admin panel at `/admin` |
+| 9 | Add a Provider |
+| 10 | Create an API token |
+| 11 | Use the API |
+
+### ⚠️ Important Notes
+
+1. **Don't forget your password** — if you lose it, you'll need to delete and recreate the Worker
+2. **Copy your token** — the API token is only shown once
+3. **Save your Database ID** — you'll need it for troubleshooting
+4. **Always check Encrypt** — make sure the Encrypt box is checked for all Secrets
+5. **Re-deploy after changes** — after modifying Settings, re-deploy the Worker
+
+---
+
 ## 📖 API Reference
 
 ### Base URL
@@ -147,8 +320,6 @@ anthropic/claude-3.5-sonnet
 my-proxy/llama-3-8b
 ```
 
-Use **model aliases** to create short names like `gpt-4o` that map to full model IDs.
-
 ---
 
 ## 🔧 Configuration
@@ -198,7 +369,6 @@ Client (VSCode, Cline, App)
 ┌─────────────────────────┐
 │    CFRouter Worker       │  ← Cloudflare Edge
 │  ┌───────────────────┐   │
-│  │  Alias Resolver    │   │
 │  │  Load Balancer     │   │
 │  │  Usage Tracker     │   │
 │  │  Stream Transformer│   │
@@ -269,4 +439,4 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## Keywords
 
-`cloudflare workers` `ai gateway` `openai compatible` `api proxy` `load balancer` `llm proxy` `ai router` `cloudflare d1` `ai agent` `vscode copilot` `cline` `model alias` `round robin` `ai api` `chat completions` `llm load balancing` `multi provider` `edge computing` `serverless ai` `api management`
+`cloudflare workers` `ai gateway` `openai compatible` `api proxy` `load balancer` `llm proxy` `ai router` `cloudflare d1` `ai agent` `vscode copilot` `cline` `round robin` `ai api` `chat completions` `llm load balancing` `multi provider` `edge computing` `serverless ai` `api management`
