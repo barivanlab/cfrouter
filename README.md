@@ -37,6 +37,8 @@ If you're building with **AI agents** (VSCode Copilot, Cline, Continue, Cursor),
 | **OpenAI-Compatible API** | Drop-in replacement for OpenAI's API — works with any client that speaks the `/v1/chat/completions` protocol |
 | **Multi-Provider Load Balancing** | Round-robin routing across multiple AI providers and API keys |
 | **Admin Dashboard** | Built-in web UI for managing providers, API keys, and analytics |
+| **Playground** | Chat with any model from an enabled provider straight from the dashboard — streaming, system prompt, temperature, `max_tokens`, `top_p` |
+| **Model Curation** | Hide models you don't need from the public `/models` list, per model or in bulk. Hidden models stay callable by ID, so existing callers never break |
 | **Usage Tracking** | Per-key, per-model token usage analytics in Cloudflare D1 |
 | **Streaming Support** | Full SSE streaming support with transparent response transformation |
 | **Health Monitoring** | Real-time provider health status and endpoint availability |

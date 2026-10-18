@@ -11,6 +11,102 @@
 // Or use the Setup Wizard at /setup on first run (dashboard users)
 const SESSION_MAX_AGE = 86400; // 24 hours in seconds
 
+// ─── Provider Catalog ──────────────────────────────────────────────────
+// Pre-built catalog of popular AI providers for quick setup.
+// Users click a provider, get auto-filled fields, paste their API key, done.
+const PROVIDER_CATALOG = [
+  // ── Frontier Labs ──
+  { id: "openai", name: "OpenAI", slug: "openai", baseUrl: "https://api.openai.com/v1", description: "GPT-4o, GPT-4.1, o3, DALL·E, Whisper, Codex", website: "https://platform.openai.com", color: "#10a37f", category: "frontier", hasFree: false, letter: "O" },
+  { id: "anthropic", name: "Anthropic", slug: "anthropic", baseUrl: "https://api.anthropic.com/v1", description: "Claude 4 Opus, Sonnet, Haiku, Claude Code", website: "https://console.anthropic.com", color: "#d4a574", category: "frontier", hasFree: false, letter: "A" },
+  { id: "gemini", name: "Google Gemini", slug: "gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta", description: "Gemini 2.5 Pro/Flash, Imagen, Veo", website: "https://aistudio.google.com", color: "#4285f4", category: "frontier", hasFree: true, letter: "G" },
+  { id: "groq", name: "Groq", slug: "groq", baseUrl: "https://api.groq.com/openai/v1", description: "Ultra-fast Llama, Mixtral, Gemma on LPU", website: "https://console.groq.com", color: "#f55036", category: "frontier", hasFree: true, letter: "Gr" },
+  { id: "xai", name: "xAI (Grok)", slug: "xai", baseUrl: "https://api.x.ai/v1", description: "Grok 3, Grok 3 Mini — real-time X data", website: "https://console.x.ai", color: "#1d9bf0", category: "frontier", hasFree: false, letter: "x" },
+  { id: "mistral", name: "Mistral AI", slug: "mistral", baseUrl: "https://api.mistral.ai/v1", description: "Mistral Large, Medium, Small, Codestral", website: "https://console.mistral.ai", color: "#f76e11", category: "frontier", hasFree: true, letter: "M" },
+  { id: "perplexity", name: "Perplexity", slug: "perplexity", baseUrl: "https://api.perplexity.ai", description: "Sonar models with real-time web search", website: "https://perplexity.ai", color: "#20b8cd", category: "frontier", hasFree: false, letter: "P" },
+  { id: "cohere", name: "Cohere", slug: "cohere", baseUrl: "https://api.cohere.com/v2", description: "Command R+, Embed, Rerank", website: "https://dashboard.cohere.com", color: "#39594d", category: "frontier", hasFree: true, letter: "C" },
+  { id: "meta-llama", name: "Meta Llama", slug: "meta-llama", baseUrl: "https://llama.developer.meta.com/v1", description: "Llama 4 Maverick/Scout, open-source LLMs", website: "https://llama.developer.meta.com", color: "#0668e1", category: "frontier", hasFree: false, letter: "L" },
+  { id: "deepseek", name: "DeepSeek", slug: "deepseek", baseUrl: "https://api.deepseek.com/v1", description: "DeepSeek-V3, R1 — powerful & affordable", website: "https://platform.deepseek.com", color: "#4d6bfe", category: "frontier", hasFree: true, letter: "DS" },
+  { id: "ai21", name: "AI21 Labs", slug: "ai21", baseUrl: "https://api.ai21.com/studio/v1", description: "Jamba, Samba models — long context", website: "https://www.ai21.com", color: "#e8433e", category: "frontier", hasFree: true, letter: "A21" },
+  { id: "venice", name: "Venice.ai", slug: "venice", baseUrl: "https://api.venice.ai/api/v1", description: "Private AI — uncensored, no logs", website: "https://venice.ai", color: "#7c3aed", category: "frontier", hasFree: false, letter: "V" },
+  { id: "nous-research", name: "Nous Research", slug: "nous-research", baseUrl: "https://api.nousresearch.com/v1", description: "Hermes, Meta-Llama fine-tunes", website: "https://portal.nousresearch.com", color: "#8b5cf6", category: "frontier", hasFree: true, letter: "NR" },
+  { id: "reka", name: "Reka AI", slug: "reka", baseUrl: "https://api.reka.ai/v1", description: "Reka Core/Flash — multimodal models", website: "https://platform.reka.ai", color: "#0ea5e9", category: "frontier", hasFree: true, letter: "Rk" },
+
+  // ── Inference Hosts ──
+  { id: "together", name: "Together AI", slug: "together", baseUrl: "https://api.together.xyz/v1", description: "Open-source models, fine-tuning, inference", website: "https://api.together.xyz/settings/api-keys", color: "#6366f1", category: "inference", hasFree: false, letter: "T" },
+  { id: "fireworks", name: "Fireworks AI", slug: "fireworks", baseUrl: "https://api.fireworks.ai/inference/v1", description: "Fast open-source model serving", website: "https://fireworks.ai", color: "#ff6b35", category: "inference", hasFree: false, letter: "F" },
+  { id: "cerebras", name: "Cerebras", slug: "cerebras", baseUrl: "https://api.cerebras.ai/v1", description: "Wafer-scale chip — fastest inference", website: "https://cloud.cerebras.ai", color: "#00c2a1", category: "inference", hasFree: false, letter: "Cb" },
+  { id: "nvidia", name: "NVIDIA NIM", slug: "nvidia", baseUrl: "https://integrate.api.nvidia.com/v1", description: "GPU-optimized models, 40+ free models", website: "https://build.nvidia.com", color: "#76b900", category: "inference", hasFree: true, letter: "NV" },
+  { id: "huggingface", name: "Hugging Face", slug: "huggingface", baseUrl: "https://api-inference.huggingface.co/v1", description: "Open models hub — free inference API", website: "https://huggingface.co/settings/tokens", color: "#ffd21e", category: "inference", hasFree: true, letter: "HF" },
+  { id: "sambanova", name: "SambaNova", slug: "sambanova", baseUrl: "https://api.sambanova.ai/v1", description: "Fast inference — Llama, DeepSeek", website: "https://cloud.sambanova.ai/apis", color: "#ef4444", category: "inference", hasFree: false, letter: "SN" },
+  { id: "siliconflow", name: "SiliconFlow", slug: "siliconflow", baseUrl: "https://api.siliconflow.cn/v1", description: "Open-source models — DeepSeek, Qwen", website: "https://cloud.siliconflow.com", color: "#3b82f6", category: "inference", hasFree: false, letter: "SF" },
+  { id: "hyperbolic", name: "Hyperbolic", slug: "hyperbolic", baseUrl: "https://api.hyperbolic.xyz/v1", description: "Open AI marketplace — fair pricing", website: "https://app.hyperbolic.xyz", color: "#a855f7", category: "inference", hasFree: false, letter: "Hb" },
+  { id: "deepinfra", name: "DeepInfra", slug: "deepinfra", baseUrl: "https://api.deepinfra.com/v1/openai", description: "Low-cost inference for open models", website: "https://deepinfra.com/dash/api_keys", color: "#1e40af", category: "inference", hasFree: false, letter: "DI" },
+  { id: "lambda", name: "Lambda", slug: "lambda", baseUrl: "https://api.lambdatest.com/v1", description: "GPU cloud — Llama, Mistral inference", website: "https://cloud.lambdatest.com", color: "#6366f1", category: "inference", hasFree: false, letter: "Lb" },
+  { id: "nebius", name: "Nebius", slug: "nebius", baseUrl: "https://api.studio.nebius.com/v1", description: "Open models on NVIDIA H100s", website: "https://nebius.com", color: "#06b6d4", category: "inference", hasFree: false, letter: "Nb" },
+  { id: "baseten", name: "Baseten", slug: "baseten", baseUrl: "https://api.baseten.co/v1", description: "Model inference — truss framework", website: "https://app.baseten.co/settings/api-keys", color: "#7c3aed", category: "inference", hasFree: false, letter: "Bt" },
+  { id: "friendli", name: "FriendliAI", slug: "friendli", baseUrl: "https://inference.friendli.ai/v1", description: "Fast inference — LoRA serving", website: "https://app.friendli.ai", color: "#06b6d4", category: "inference", hasFree: true, letter: "Fl" },
+  { id: "upstage", name: "Upstage", slug: "upstage", baseUrl: "https://api.upstage.ai/v1/solar", description: "Solar models — compact & efficient", website: "https://app.upstage.ai", color: "#3b82f6", category: "inference", hasFree: false, letter: "Up" },
+
+  // ── Aggregators / Gateways ──
+  { id: "openrouter", name: "OpenRouter", slug: "openrouter", baseUrl: "https://openrouter.ai/api/v1", description: "150+ models, 20 free models (20 RPM)", website: "https://openrouter.ai/keys", color: "#6366f1", category: "gateway", hasFree: true, letter: "OR" },
+  { id: "requesty", name: "Requesty", slug: "requesty", baseUrl: "https://api.requesty.ai/v1", description: "LLM routing — ~200 free req/day", website: "https://app.requesty.ai", color: "#10b981", category: "gateway", hasFree: true, letter: "Rq" },
+  { id: "novita", name: "Novita AI", slug: "novita", baseUrl: "https://api.novita.ai/v3/openai", description: "Open models — $0.50 free trial", website: "https://novita.ai", color: "#f59e0b", category: "gateway", hasFree: true, letter: "Nv" },
+  { id: "poe", name: "Poe", slug: "poe", baseUrl: "https://api.poe.com/v1", description: "Multi-model gateway — GPT, Claude, Llama", website: "https://poe.com", color: "#3b82f6", category: "gateway", hasFree: false, letter: "Pe" },
+  { id: "chutes", name: "Chutes AI", slug: "chutes", baseUrl: "https://api.chutes.ai/v1", description: "Open models — pay-per-token", website: "https://chutes.ai", color: "#f43f5e", category: "gateway", hasFree: false, letter: "Ch" },
+  { id: "aimlapi", name: "AIML API", slug: "aimlapi", baseUrl: "https://api.aimlapi.ai/v1", description: "100+ models, unified API", website: "https://aimlapi.com", color: "#8b5cf6", category: "gateway", hasFree: false, letter: "AM" },
+  { id: "zylo-api", name: "ZYLO API", slug: "zylo-api", baseUrl: "https://api.zyloai.net/v1", description: "Free tier: 10 RPM / 7200 req/day", website: "https://zyloai.net", color: "#06b6d4", category: "gateway", hasFree: true, letter: "ZL" },
+  { id: "anyapi", name: "AnyAPI", slug: "anyapi", baseUrl: "https://anyapi.ai/v1", description: "100K ANY tokens/day free", website: "https://anyapi.ai", color: "#10b981", category: "gateway", hasFree: true, letter: "An" },
+  { id: "fastrouter", name: "FastRouter", slug: "fastrouter", baseUrl: "https://api.fastrouter.ai/v1", description: "Fast LLM routing & load balancing", website: "https://fastrouter.ai", color: "#ef4444", category: "gateway", hasFree: true, letter: "FR" },
+  { id: "llmgateway", name: "LLM Gateway", slug: "llmgateway", baseUrl: "https://api.llmgateway.io/v1", description: "Multi-provider gateway", website: "https://llmgateway.io", color: "#6366f1", category: "gateway", hasFree: true, letter: "LG" },
+  { id: "llm-kiwi", name: "LLM Kiwi", slug: "llm-kiwi", baseUrl: "https://api.llm.kiwi/v1", description: "Open models gateway", website: "https://llm.kiwi", color: "#84cc16", category: "gateway", hasFree: true, letter: "LK" },
+  { id: "literouter", name: "LiteRouter", slug: "literouter", baseUrl: "https://api.literouter.com/v1", description: "Lightweight model routing", website: "https://literouter.com", color: "#f59e0b", category: "gateway", hasFree: true, letter: "LR" },
+  { id: "mixlayer", name: "MixLayer", slug: "mixlayer", baseUrl: "https://models.mixlayer.ai/v1", description: "Multi-model access", website: "https://mixlayer.ai", color: "#ec4899", category: "gateway", hasFree: true, letter: "ML" },
+  { id: "speka", name: "Speka", slug: "speka", baseUrl: "https://api.speka.me/v1", description: "Budget-friendly model access", website: "https://speka.me", color: "#8b5cf6", category: "gateway", hasFree: true, letter: "Sp" },
+  { id: "tokenreply", name: "TokenReply", slug: "tokenreply", baseUrl: "https://api.tokenreply.com/v1", description: "Model token relay", website: "https://tokenreply.com", color: "#06b6d4", category: "gateway", hasFree: true, letter: "TR" },
+  { id: "nanogpt", name: "NanoGPT", slug: "nanogpt", baseUrl: "https://nano-gpt.com/api/v1", description: "Simple model gateway", website: "https://nano-gpt.com", color: "#10b981", category: "gateway", hasFree: false, letter: "NG" },
+  { id: "openadapter", name: "OpenAdapter", slug: "openadapter", baseUrl: "https://api.openadapter.in/v1", description: "Open model adapter", website: "https://openadapter.in", color: "#f59e0b", category: "gateway", hasFree: true, letter: "OA" },
+  { id: "navy", name: "Navy AI", slug: "navy", baseUrl: "https://api.navy/v1", description: "Shared 150K tokens/day free pool", website: "https://navy.ai", color: "#1e40af", category: "gateway", hasFree: true, letter: "Nv" },
+  { id: "ainative", name: "AI Native", slug: "ainative", baseUrl: "https://api.ainative.studio/api/v1", description: "~10M tokens/month free", website: "https://ainative.studio", color: "#10b981", category: "gateway", hasFree: true, letter: "AN" },
+  { id: "seekai", name: "SeekAI", slug: "seekai", baseUrl: "https://seekai.cc/v1", description: "Open models gateway", website: "https://seekai.cc", color: "#6366f1", category: "gateway", hasFree: true, letter: "SA" },
+
+  // ── Regional / China ──
+  { id: "alibaba", name: "Alibaba Bailian", slug: "alibaba", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", description: "Qwen models, Tongyi platform", website: "https://bailian.console.alibabacloud.com", color: "#ff6a00", category: "regional", hasFree: false, letter: "AB" },
+  { id: "qwen-cloud", name: "Qwen Cloud", slug: "qwen-cloud", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", description: "Qwen 3 — Alibaba cloud inference", website: "https://dashscope.console.aliyun.com", color: "#6200ea", category: "regional", hasFree: false, letter: "QW" },
+  { id: "kimi", name: "Kimi (Moonshot)", slug: "kimi", baseUrl: "https://api.moonshot.cn/v1", description: "Kimi K2 — 128K context", website: "https://platform.moonshot.cn", color: "#000000", category: "regional", hasFree: false, letter: "Ki" },
+  { id: "minimax", name: "MiniMax", slug: "minimax", baseUrl: "https://api.minimax.chat/v1", description: "MiniMax-Text, abab models", website: "https://platform.minimaxi.com", color: "#3b82f6", category: "regional", hasFree: false, letter: "MM" },
+  { id: "volcengine", name: "ByteDance Volcengine", slug: "volcengine", baseUrl: "https://ark.cn-beijing.volces.com/api/v3", description: "Doubao models — ByteDance AI", website: "https://console.volcengine.com/ark", color: "#ff2d55", category: "regional", hasFree: false, letter: "VD" },
+  { id: "baidu", name: "Baidu ERNIE", slug: "baidu", baseUrl: "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop", description: "ERNIE 4.5, Speed, Lite", website: "https://console.bce.baidu.com", color: "#2932e1", category: "regional", hasFree: true, letter: "BD" },
+  { id: "tencent", name: "Tencent Hunyuan", slug: "tencent", baseUrl: "https://api.lkeap.cloud.tencent.com/v1", description: "Hunyuan Lite — free tier", website: "https://console.cloud.tencent.com", color: "#006eff", category: "regional", hasFree: true, letter: "TX" },
+  { id: "stepfun", name: "StepFun", slug: "stepfun", baseUrl: "https://api.stepfun.com/v1", description: "Step 2 — Chinese LLM platform", website: "https://platform.stepfun.ai", color: "#6366f1", category: "regional", hasFree: true, letter: "SF" },
+  { id: "agnes", name: "Agnes AI", slug: "agnes", baseUrl: "https://api.agnes-ai.com/v1", description: "Permanently free models", website: "https://agnes-ai.com", color: "#10b981", category: "regional", hasFree: true, letter: "Ag" },
+  { id: "360ai", name: "360 AI", slug: "360ai", baseUrl: "https://api.360.cn/v1", description: "360 LLM — Chinese tech giant", website: "https://ai.360.cn", color: "#00bfff", category: "regional", hasFree: true, letter: "36" },
+  { id: "doubao", name: "Doubao (ByteDance)", slug: "doubao", baseUrl: "https://ark.cn-beijing.volces.com/api/v3", description: "Doubao Pro — ByteDance consumer AI", website: "https://www.doubao.com", color: "#ff6b35", category: "regional", hasFree: false, letter: "Db" },
+  { id: "baichuan", name: "Baichuan", slug: "baichuan", baseUrl: "https://api.baichuan-ai.com/v1", description: "Baichuan 4 — Chinese LLM", website: "https://platform.baichuan-ai.com", color: "#3b82f6", category: "regional", hasFree: true, letter: "BC" },
+  { id: "yi", name: "Yi (01.AI)", slug: "yi", baseUrl: "https://api.lingyiwanwu.com/v1", description: "Yi-Lightning — fast Chinese LLM", website: "https://platform.lingyiwanwu.com", color: "#6366f1", category: "regional", hasFree: false, letter: "Yi" },
+  { id: "sensenova", name: "SenseNova", slug: "sensenova", baseUrl: "https://api.sensenova.cn/v1", description: "SenseChat — SenseTime AI", website: "https://platform.sensenova.cn", color: "#00bfff", category: "regional", hasFree: false, letter: "SN" },
+
+  // ── Enterprise Cloud ──
+  { id: "azure-openai", name: "Azure OpenAI", slug: "azure-openai", baseUrl: "https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT", description: "Enterprise GPT-4o, DALL·E, Whisper", website: "https://portal.azure.com", color: "#0078d4", category: "enterprise", hasFree: false, letter: "Az" },
+  { id: "bedrock", name: "AWS Bedrock", slug: "bedrock", baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com", description: "Claude, Llama, Mistral on AWS", website: "https://console.aws.amazon.com/bedrock", color: "#ff9900", category: "enterprise", hasFree: false, letter: "BR" },
+  { id: "vertex", name: "Google Vertex AI", slug: "vertex", baseUrl: "https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT", description: "Gemini, PaLM on Google Cloud", website: "https://console.cloud.google.com/vertex-ai", color: "#4285f4", category: "enterprise", hasFree: false, letter: "VA" },
+  { id: "cloudflare-ai", name: "Cloudflare AI", slug: "cloudflare-ai", baseUrl: "https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT/ai/run", description: "Workers AI — 10K Neurons/day free", website: "https://dash.cloudflare.com", color: "#f48120", category: "enterprise", hasFree: true, letter: "CF" },
+  { id: "scaleway", name: "Scaleway", slug: "scaleway", baseUrl: "https://api.scaleway.ai/v1", description: "1M free tokens — Paris edge", website: "https://console.scaleway.com", color: "#0055d6", category: "enterprise", hasFree: true, letter: "SC" },
+  { id: "digitalocean", name: "DigitalOcean", slug: "digitalocean", baseUrl: "https://api.digitalocean.com/v2/genai", description: "DO AI — managed inference", website: "https://cloud.digitalocean.com", color: "#0080ff", category: "enterprise", hasFree: false, letter: "DO" },
+  { id: "watsonx", name: "IBM watsonx", slug: "watsonx", baseUrl: "https://us-south.ml.cloud.ibm.com/ml/gateway/v1", description: "Granite models on IBM Cloud", website: "https://cloud.ibm.com", color: "#054ada", category: "enterprise", hasFree: false, letter: "Wx" },
+  { id: "databricks", name: "Databricks", slug: "databricks", baseUrl: "https://YOUR_WORKSPACE.databricks.com/api/2.0/serving-endpoints", description: "DBRX, managed AI platform", website: "https://www.databricks.com", color: "#ff3621", category: "enterprise", hasFree: false, letter: "DB" },
+  { id: "snowflake", name: "Snowflake Cortex", slug: "snowflake", baseUrl: "https://YOUR_ACCOUNT.snowflakecomputing.com/api/v2/cortex/chat/completions", description: "Cortex AI — data + AI platform", website: "https://app.snowflake.com", color: "#29b5e8", category: "enterprise", hasFree: false, letter: "SF" },
+  { id: "modal", name: "Modal", slug: "modal", baseUrl: "https://YOUR_APP--YOUR_NAME.modal.run/v1", description: "Serverless GPU — $30/mo free credits", website: "https://modal.com", color: "#000000", category: "enterprise", hasFree: true, letter: "Md" },
+
+  // ── Media / Specialty ──
+  { id: "stability-ai", name: "Stability AI", slug: "stability-ai", baseUrl: "https://api.stability.ai/v2beta", description: "Stable Diffusion, SDXL, video gen", website: "https://platform.stability.ai", color: "#a855f7", category: "media", hasFree: false, letter: "SA" },
+  { id: "recraft", name: "Recraft", slug: "recraft", baseUrl: "https://api.recraft.ai/v1", description: "AI design — vector, raster, icons", website: "https://www.recraft.ai", color: "#6366f1", category: "media", hasFree: false, letter: "RC" },
+  { id: "voyage-ai", name: "Voyage AI", slug: "voyage-ai", baseUrl: "https://api.voyageai.com/v1", description: "200M free tokens — embeddings & rerank", website: "https://dashboard.voyageai.com", color: "#3b82f6", category: "media", hasFree: true, letter: "VA" },
+  { id: "jina-ai", name: "Jina AI", slug: "jina-ai", baseUrl: "https://api.jina.ai/v1", description: "10M free tokens — embeddings, reader", website: "https://jina.ai/api-dashboard", color: "#ea580c", category: "media", hasFree: true, letter: "JA" },
+  { id: "segmind", name: "Segmind", slug: "segmind", baseUrl: "https://api.segmind.com/v1", description: "Fast inference — SD, LoRA, video", website: "https://www.segmind.com", color: "#10b981", category: "media", hasFree: true, letter: "SG" },
+  { id: "black-forest-labs", name: "Black Forest Labs", slug: "black-forest-labs", baseUrl: "https://api.bfl.ml/v1", description: "FLUX — state-of-the-art image gen", website: "https://bfl.ml", color: "#000000", category: "media", hasFree: false, letter: "BF" },
+  { id: "fal-ai", name: "fal.ai", slug: "fal-ai", baseUrl: "https://fal.run", description: "Fast AI inference — images & video", website: "https://fal.ai/dashboard/keys", color: "#8b5cf6", category: "media", hasFree: false, letter: "fa" },
+];
+
 // ─── Settings Helpers ───────────────────────────────────────────────────
 // Read settings from DB (fallback to env vars for CLI users)
 
@@ -157,7 +253,7 @@ async function initDatabase(env) {
   if (_dbInitialized) return;
   _dbInitialized = true;
   try {
-    // Single batch: DDL + server list + default aliases — runs ONCE
+    // Single batch: DDL — runs ONCE
     const statements = [
       env.DB.prepare(`CREATE TABLE IF NOT EXISTS api_status (
         url TEXT PRIMARY KEY, is_blocked INTEGER DEFAULT 0, blocked_until TEXT,
@@ -167,7 +263,7 @@ async function initDatabase(env) {
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, base_url TEXT NOT NULL UNIQUE,
         tokens TEXT NOT NULL DEFAULT '[]', enabled INTEGER DEFAULT 1,
         fetched_models TEXT DEFAULT '[]', slug TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        token_selection TEXT DEFAULT 'round-robin'
+        token_selection TEXT DEFAULT 'round-robin', disabled_models TEXT DEFAULT '[]'
       )`),
       env.DB.prepare(`CREATE TABLE IF NOT EXISTS token_usage (
         provider_id INTEGER NOT NULL, token_index INTEGER NOT NULL, calls INTEGER DEFAULT 0,
@@ -177,11 +273,6 @@ async function initDatabase(env) {
         token TEXT NOT NULL, date TEXT NOT NULL, endpoints_data TEXT DEFAULT '{}',
         api_key_id INTEGER,
         PRIMARY KEY (token, date)
-      )`),
-      env.DB.prepare(`CREATE TABLE IF NOT EXISTS model_aliases (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, alias TEXT NOT NULL UNIQUE, model_id TEXT NOT NULL,
-        display_name TEXT DEFAULT '', context_window INTEGER DEFAULT 0,
-        enabled INTEGER DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )`),
       env.DB.prepare(`CREATE TABLE IF NOT EXISTS api_keys (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,6 +292,7 @@ async function initDatabase(env) {
 
     // Migrations for existing databases (safe to run repeatedly)
     try { await env.DB.prepare("ALTER TABLE custom_providers ADD COLUMN token_selection TEXT DEFAULT 'round-robin'").run(); } catch (e) {}
+    try { await env.DB.prepare("ALTER TABLE custom_providers ADD COLUMN disabled_models TEXT DEFAULT '[]'").run(); } catch (e) {}
   } catch (e) { console.error("DB Init Error:", e); }
 }
 
@@ -345,6 +437,9 @@ export default {
         if (path === "/admin/tokens/toggle") return await handleToggleTokenKey(request, env);
         if (path === "/admin/tokens/delete") return await handleDeleteTokenKey(request, env);
         if (path === "/admin/tokens/rename") return await handleRenameTokenKey(request, env);
+        if (path === "/admin/models/toggle") return await handleModelToggle(request, env);
+        if (path === "/admin/models/bulk") return await handleModelBulk(request, env);
+        if (path === "/admin/playground/chat") return await handlePlayground(request, env);
       }
 
       // Admin pages (GET)
@@ -362,6 +457,8 @@ export default {
       if (path === "/admin/providers") return await renderAdminProviders(env);
       if (path === "/admin/tokens") return await renderAdminTokens(env, url);
       if (path === "/admin/docs") return await renderAdminDocs(env);
+      if (path === "/admin/models") return await renderAdminModels(env, url);
+      if (path === "/admin/playground") return await renderAdminPlayground(env, url);
 
       return new Response("Not Found", { status: 404 });
     }
@@ -445,7 +542,6 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
 
   // ── Parse model from body (sync, instant) ──
   let modelName = "unknown";
-  let usedAlias = null;
   let isStream = false;
   if (bodyText) {
     try {
@@ -463,20 +559,10 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
       .bind(nowIso).run()
   );
 
-  // ── Resolve alias + fetch custom providers ──
-  const aliasQuery = modelName !== "unknown"
-    ? env.DB.prepare("SELECT model_id, alias FROM model_aliases WHERE alias = ? AND enabled = 1").bind(modelName).first()
-    : Promise.resolve(null);
-  const cpQuery = env.DB.prepare(
-    "SELECT id, name, base_url, tokens FROM custom_providers WHERE enabled = 1"
+  // ── Fetch custom providers ──
+  const { results: customProviders } = await env.DB.prepare(
+    "SELECT id, name, slug, base_url, tokens, token_selection FROM custom_providers WHERE enabled = 1"
   ).all();
-
-  const [aliasRow, { results: customProviders }] = await Promise.all([aliasQuery, cpQuery]);
-
-  if (aliasRow) {
-    usedAlias = aliasRow.alias;
-    modelName = aliasRow.model_id;
-  }
 
   // ── Build target list ──
   let targets = [];
@@ -532,7 +618,7 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
   let success = false;
   let usedProviderId = null;
   let usedTokenIndex = null;
-  const needBodyRewrite = (usedAlias || rewrittenModelName !== modelName) && bodyText;
+  const needBodyRewrite = rewrittenModelName !== modelName && bodyText;
   const upstreamModel = rewrittenModelName;
 
   for (const target of targets) {
@@ -649,17 +735,6 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
             }
           }
 
-          // ── Alias rewriting (non-streaming) ──
-          if (usedAlias) {
-            if (respJson.model) respJson.model = usedAlias;
-            if (respJson.choices) {
-              for (const choice of respJson.choices) {
-                if (choice.delta?.model) choice.delta.model = usedAlias;
-                if (choice.message?.model) choice.message.model = usedAlias;
-              }
-            }
-          }
-
           return new Response(JSON.stringify(respJson), {
             status: response.status,
             statusText: response.statusText,
@@ -752,7 +827,7 @@ async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
   const openaiBody = anthropicToOpenAI(body);
 
   // Resolve model and targets (reuse proxy logic)
-  const { targets, rewrittenModel, usedAlias } = await resolveModelAndTargets(env, openaiBody.model);
+  const { targets, rewrittenModel } = await resolveModelAndTargets(env, openaiBody.model);
 
   if (targets.length === 0) {
     return new Response(JSON.stringify({
@@ -763,15 +838,13 @@ async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
   openaiBody.model = rewrittenModel;
 
   // Fetch upstream
-  const { response, success, target: usedTarget } = await fetchUpstream(targets, openaiBody, request.method);
+  const { response, success, target: usedTarget, error: upstreamError } = await fetchUpstream(targets, openaiBody, request.method);
 
   if (!success) {
-    return new Response(JSON.stringify({
-      type: 'error', error: { type: 'api_error', message: 'All providers failed' }
-    }), { status: 503, headers: { "Content-Type": "application/json", ...corsHeaders } });
+    return upstreamFailureResponse(upstreamError, "anthropic", corsHeaders);
   }
 
-  const responseModel = usedAlias || body.model;
+  const responseModel = body.model;
 
   // Handle streaming
   if (body.stream) {
@@ -816,7 +889,7 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
   const openaiBody = geminiToOpenAI({ ...body, model });
 
   // Resolve model and targets
-  const { targets, rewrittenModel, usedAlias } = await resolveModelAndTargets(env, openaiBody.model);
+  const { targets, rewrittenModel } = await resolveModelAndTargets(env, openaiBody.model);
 
   if (targets.length === 0) {
     return new Response(JSON.stringify({
@@ -828,15 +901,13 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
   openaiBody.stream = isStream;
 
   // Fetch upstream
-  const { response, success, target: usedTarget } = await fetchUpstream(targets, openaiBody, request.method);
+  const { response, success, target: usedTarget, error: upstreamError } = await fetchUpstream(targets, openaiBody, request.method);
 
   if (!success) {
-    return new Response(JSON.stringify({
-      error: { code: 503, message: 'All providers failed', status: 'UNAVAILABLE' }
-    }), { status: 503, headers: { "Content-Type": "application/json", ...corsHeaders } });
+    return upstreamFailureResponse(upstreamError, "gemini", corsHeaders);
   }
 
-  const responseModel = usedAlias || model;
+  const responseModel = model;
 
   // Handle streaming
   if (isStream) {
@@ -864,19 +935,7 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
 // ─── Shared Proxy Helpers ───────────────────────────────────────────────
 
 async function resolveModelAndTargets(env, modelName) {
-  let usedAlias = null;
   let rewrittenModel = modelName;
-
-  // Alias lookup
-  if (modelName && modelName !== 'unknown') {
-    const aliasRow = await env.DB.prepare(
-      "SELECT model_id, alias FROM model_aliases WHERE alias = ? AND enabled = 1"
-    ).bind(modelName).first();
-    if (aliasRow) {
-      usedAlias = aliasRow.alias;
-      rewrittenModel = aliasRow.model_id;
-    }
-  }
 
   // Fetch custom providers
   const { results: customProviders } = await env.DB.prepare(
@@ -925,10 +984,31 @@ async function resolveModelAndTargets(env, modelName) {
     }
   }
 
-  return { targets, rewrittenModel, usedAlias };
+  return { targets, rewrittenModel };
+}
+
+// Pull a human-readable reason out of an upstream error body, so a provider
+// rejection (bad key, quota, region block, ...) reaches the client verbatim
+// instead of being reduced to a generic "All providers failed".
+function extractUpstreamError(bodyText) {
+  if (!bodyText) return "";
+  try {
+    const parsed = JSON.parse(bodyText);
+    const err = parsed?.error;
+    if (typeof err === "string") return err;
+    if (err?.message) return err.message;
+    if (parsed?.message) return parsed.message;
+    if (err?.type) return err.type;
+  } catch (e) {
+    // Not JSON (HTML error page or plain text) — fall through to raw text
+  }
+  return bodyText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().substring(0, 300);
 }
 
 async function fetchUpstream(targets, openaiBody, method) {
+  let lastException = null;     // most recent network/timeout failure
+  let lastUpstreamError = null; // most recent non-OK response from a provider
+
   for (const target of targets) {
     let targetBaseUrl = target.url.replace(/\/v1\/?$/, "");
     const targetUrl = targetBaseUrl + "/v1/chat/completions";
@@ -951,13 +1031,50 @@ async function fetchUpstream(targets, openaiBody, method) {
       clearTimeout(timeout);
 
       if (response.ok) {
-        return { response, success: true, target };
+        return { response, success: true, target, error: null };
       }
+
+      const bodyText = await response.text().catch(() => "");
+      lastUpstreamError = {
+        status: response.status,
+        message: extractUpstreamError(bodyText) || response.statusText || `HTTP ${response.status}`,
+        providerId: target.providerId ?? null
+      };
     } catch (e) {
-      continue;
+      lastException = {
+        status: 502,
+        message: e.name === "AbortError"
+          ? "Upstream request timed out after 120s"
+          : (e.message || "Upstream connection failed"),
+        providerId: target.providerId ?? null
+      };
     }
   }
-  return { response: null, success: false, target: null };
+  return { response: null, success: false, target: null, error: lastUpstreamError || lastException };
+}
+
+// Upstream statuses whose meaning the client can act on directly. Everything
+// else (401/403 key or region blocks, 5xx outages) is reported as 502 so a
+// provider rejection isn't mistaken for a problem with the gateway API key.
+const UPSTREAM_PASSTHROUGH_STATUSES = [400, 404, 429];
+
+function upstreamFailureResponse(upstreamError, format, corsHeaders) {
+  const status = UPSTREAM_PASSTHROUGH_STATUSES.includes(upstreamError?.status)
+    ? upstreamError.status
+    : 502;
+
+  const message = upstreamError
+    ? `Upstream provider error (${upstreamError.status}): ${upstreamError.message}`
+    : "All providers failed";
+
+  const body = format === "gemini"
+    ? { error: { code: status, message, status: "UNAVAILABLE", upstream_status: upstreamError?.status ?? null } }
+    : { type: "error", error: { type: "api_error", message, upstream_status: upstreamError?.status ?? null } };
+
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders }
+  });
 }
 
 // ─── Format Conversion Functions ────────────────────────────────────────
@@ -1323,7 +1440,11 @@ async function handleAddProvider(request, env) {
     throw e;
   }
 
-  // Auto-fetch models for the new provider (non-blocking)
+  // Auto-fetch models for the new provider. A failure here is not fatal, but
+  // it is reported back on the provider page — a provider that rejects the
+  // request (bad key, quota, region block) would otherwise look like an
+  // empty provider with no explanation.
+  let modelsError = "";
   if (providerId) {
     try {
       let modelsUrl = baseUrl.replace(/\/$/, "");
@@ -1348,12 +1469,21 @@ async function handleAddProvider(request, env) {
         if (models.length > 0) {
           await env.DB.prepare("UPDATE custom_providers SET fetched_models = ? WHERE id = ?")
             .bind(JSON.stringify(models), providerId).run();
+        } else {
+          modelsError = "Provider returned an empty model list";
         }
+      } else {
+        const errText = await resp.text().catch(() => "");
+        modelsError = `HTTP ${resp.status}: ${extractUpstreamError(errText) || resp.statusText}`;
       }
-    } catch (e) { /* ignore auto-fetch errors */ }
+    } catch (e) {
+      modelsError = e.name === "AbortError" ? "Model fetch timed out after 8s" : (e.message || "Model fetch failed");
+    }
   }
 
-  return new Response(null, { status: 302, headers: { "Location": `/admin/providers/${providerId || ""}?added=1` } });
+  const location = `/admin/providers/${providerId || ""}?added=1`
+    + (modelsError ? `&models_error=${encodeURIComponent(modelsError)}` : "");
+  return new Response(null, { status: 302, headers: { "Location": location } });
 }
 
 async function handleEditProvider(request, env) {
@@ -1501,6 +1631,103 @@ async function handleFetchModels(request, env) {
   }
 }
 
+// ─── Model Visibility (per-model enable/disable) ─────────────────────────
+// Disabled models are hidden from the public /models listing only.
+// Routing is intentionally unaffected so existing callers keep working.
+
+function modelIdsOf(fetchedModelsRaw) {
+  try {
+    const parsed = JSON.parse(fetchedModelsRaw || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(m => (typeof m === "string" ? m : m?.id))
+      .filter(id => typeof id === "string" && id.length > 0);
+  } catch { return []; }
+}
+
+async function handleModelToggle(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const providerId = parseInt(body.provider_id);
+  const modelId = typeof body.model_id === "string" ? body.model_id : "";
+  const enabled = body.enabled !== false;
+
+  if (!providerId || !modelId) {
+    return new Response(JSON.stringify({ ok: false, error: "Missing provider_id or model_id" }), {
+      status: 400, headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const row = await env.DB.prepare("SELECT disabled_models FROM custom_providers WHERE id = ?")
+    .bind(providerId).first();
+  if (!row) {
+    return new Response(JSON.stringify({ ok: false, error: "Provider not found" }), {
+      status: 404, headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  let disabled;
+  try { disabled = new Set(JSON.parse(row.disabled_models || "[]")); } catch { disabled = new Set(); }
+  if (enabled) disabled.delete(modelId); else disabled.add(modelId);
+
+  await env.DB.prepare("UPDATE custom_providers SET disabled_models = ? WHERE id = ?")
+    .bind(JSON.stringify([...disabled]), providerId).run();
+
+  return new Response(JSON.stringify({ ok: true, disabled: disabled.has(modelId) }), {
+    headers: { "Content-Type": "application/json" }
+  });
+}
+
+async function handleModelBulk(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const enabled = body.enabled !== false;
+  const hasProvider = body.provider_id !== null && body.provider_id !== undefined && body.provider_id !== "";
+  const providerId = hasProvider ? parseInt(body.provider_id) : null;
+  const explicitIds = Array.isArray(body.model_ids) && body.model_ids.length > 0
+    ? new Set(body.model_ids.filter(id => typeof id === "string" && id.length > 0))
+    : null;
+
+  if (hasProvider && !providerId) {
+    return new Response(JSON.stringify({ ok: false, error: "Invalid provider_id" }), {
+      status: 400, headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const query = providerId
+    ? env.DB.prepare("SELECT id, fetched_models, disabled_models FROM custom_providers WHERE id = ?").bind(providerId)
+    : env.DB.prepare("SELECT id, fetched_models, disabled_models FROM custom_providers WHERE enabled = 1");
+  const { results } = await query.all();
+
+  let changed = 0;
+  const updates = [];
+  for (const p of (results || [])) {
+    let disabled;
+    try { disabled = new Set(JSON.parse(p.disabled_models || "[]")); } catch { disabled = new Set(); }
+    // No explicit list → act on every model this provider currently reports
+    const targets = explicitIds || new Set(modelIdsOf(p.fetched_models));
+
+    let touched = 0;
+    for (const id of targets) {
+      if (enabled) {
+        if (disabled.delete(id)) touched++;
+      } else if (!disabled.has(id)) {
+        disabled.add(id); touched++;
+      }
+    }
+    if (touched === 0) continue;
+    changed += touched;
+    updates.push(
+      env.DB.prepare("UPDATE custom_providers SET disabled_models = ? WHERE id = ?")
+        .bind(JSON.stringify([...disabled]), p.id)
+    );
+  }
+
+  if (updates.length > 0) await env.DB.batch(updates);
+
+  return new Response(JSON.stringify({ ok: true, changed, providers: updates.length }), {
+    headers: { "Content-Type": "application/json" }
+  });
+}
+
 async function handleTestModel(request, env) {
   const body = await request.text();
   const params = new URLSearchParams(body);
@@ -1574,6 +1801,166 @@ async function handleTestModel(request, env) {
   }
 }
 
+// ─── Playground (admin-only chat against a chosen provider/model) ─────────
+// Reaches the provider directly instead of going through /v1/chat/completions:
+// the admin session has no API key, and slug-only resolution avoids the public
+// proxy's "broadcast to every provider" fallback, which is wrong here.
+
+function clampNumber(value, min, max, fallback) {
+  const n = typeof value === "number" ? value : parseFloat(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+async function handlePlayground(request, env) {
+  const body = await request.json().catch(() => null);
+  if (!body) {
+    return new Response(JSON.stringify({ ok: false, error: "Invalid JSON body" }), {
+      status: 400, headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const modelRef = typeof body.model === "string" ? body.model.trim() : "";
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  if (!modelRef.includes("/")) {
+    return new Response(JSON.stringify({ ok: false, error: "Model must be in provider/model form" }), {
+      status: 400, headers: { "Content-Type": "application/json" }
+    });
+  }
+  if (messages.length === 0) {
+    return new Response(JSON.stringify({ ok: false, error: "No messages provided" }), {
+      status: 400, headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  // Split on the FIRST slash so model ids that contain "/" survive
+  const slashIndex = modelRef.indexOf("/");
+  const slug = modelRef.substring(0, slashIndex);
+  const rawModel = modelRef.substring(slashIndex + 1);
+  if (!slug || !rawModel) {
+    return new Response(JSON.stringify({ ok: false, error: "Invalid model reference" }), {
+      status: 400, headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const isStream = body.stream === true;
+
+  const jsonError = (message, status) => new Response(JSON.stringify({ ok: false, error: message }), {
+    status, headers: { "Content-Type": "application/json" }
+  });
+
+  try {
+    // Resolve the provider server-side. The upstream host comes ONLY from
+    // cp.base_url — a client-supplied URL is never used, which is what keeps
+    // this endpoint from being an SSRF hole.
+    const { results: providers } = await env.DB.prepare(
+      "SELECT id, name, base_url, tokens, token_selection FROM custom_providers WHERE enabled = 1"
+    ).all();
+    const cp = (providers || []).find(p => (p.slug || providerSlug(p.name)) === slug);
+    if (!cp) return jsonError("Unknown provider slug: " + slug, 400);
+
+    const tokens = parseTokens(cp.tokens);
+    const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
+    if (!selectedToken) return jsonError("No enabled tokens for provider " + cp.name, 400);
+
+    // Build the upstream payload server-side; clamp anything numeric
+    const outgoing = [];
+    const systemPrompt = typeof body.system === "string" ? body.system.trim() : "";
+    if (systemPrompt) outgoing.push({ role: "system", content: systemPrompt });
+    for (const m of messages) {
+      if (!m || typeof m.content !== "string") continue;
+      const role = m.role === "assistant" || m.role === "system" ? m.role : "user";
+      outgoing.push({ role, content: m.content });
+    }
+    if (outgoing.length === 0) return jsonError("No usable messages provided", 400);
+
+    const openaiBody = {
+      model: rawModel,
+      messages: outgoing,
+      temperature: clampNumber(body.temperature, 0, 2, 0.7),
+      max_tokens: Math.round(clampNumber(body.max_tokens, 1, 32000, 1024)),
+      stream: isStream,
+    };
+    if (body.top_p !== undefined && body.top_p !== null && body.top_p !== "") {
+      openaiBody.top_p = clampNumber(body.top_p, 0.01, 1, 1);
+    }
+
+    const targetUrl = cp.base_url.replace(/\/$/, "").replace(/\/v1\/?$/, "") + "/v1/chat/completions";
+
+    // request.signal lets the browser's Stop button cancel the upstream call
+    const controller = new AbortController();
+    const onClientAbort = () => controller.abort();
+    if (request.signal) request.signal.addEventListener("abort", onClientAbort);
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+    let upstream;
+    try {
+      upstream = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${selectedToken.value}`
+        },
+        body: JSON.stringify(openaiBody),
+        signal: controller.signal
+      });
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (request.signal) request.signal.removeEventListener("abort", onClientAbort);
+      return jsonError(e.name === "AbortError" ? "Request cancelled or timed out" : e.message, 502);
+    }
+
+    // The token was consumed either way, so keep the least-used strategy honest
+    await trackTokenUsage(cp.id, selectedToken._originalIndex, env).catch(() => {});
+
+    if (!upstream.ok) {
+      clearTimeout(timeoutId);
+      if (request.signal) request.signal.removeEventListener("abort", onClientAbort);
+      const errText = await upstream.text().catch(() => "");
+      return new Response(JSON.stringify({
+        ok: false,
+        error: `HTTP ${upstream.status}: ${errText.substring(0, 400)}`
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+
+    if (isStream) {
+      clearTimeout(timeoutId);
+      // captureStreamUsage taps the SSE body for real usage and records it
+      const streamed = captureStreamUsage(upstream, "playground", "/admin/playground", rawModel, env, null);
+      return new Response(streamed.body, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no"
+        }
+      });
+    }
+
+    const startedAt = Date.now();
+    const data = await upstream.json().catch(() => null);
+    clearTimeout(timeoutId);
+    if (request.signal) request.signal.removeEventListener("abort", onClientAbort);
+
+    if (!data) return jsonError("Upstream returned malformed JSON", 502);
+
+    await trackUsage(
+      new Response(JSON.stringify(data)), "playground", "/admin/playground", rawModel, env, null
+    ).catch(() => {});
+
+    return new Response(JSON.stringify({
+      ok: true,
+      reply: data.choices?.[0]?.message?.content || "",
+      model: rawModel,
+      provider: cp.name,
+      usage: data.usage || null,
+      latency_ms: Date.now() - startedAt
+    }), { headers: { "Content-Type": "application/json" } });
+  } catch (e) {
+    return jsonError(e.message || "Unexpected error", 500);
+  }
+}
+
 async function handleFetchAllModels(env) {
   const results = {};
 
@@ -1633,13 +2020,15 @@ async function handleModelsEndpoint(env, corsHeaders) {
   // Custom provider models (prefixed with provider slug)
   try {
     const { results: customProviders } = await env.DB.prepare(
-      "SELECT id, name, slug, base_url, tokens, fetched_models, token_selection FROM custom_providers WHERE enabled = 1"
+      "SELECT id, name, slug, base_url, tokens, fetched_models, token_selection, disabled_models FROM custom_providers WHERE enabled = 1"
     ).all();
 
     if (customProviders) {
       for (const cp of customProviders) {
         const slug = cp.slug || providerSlug(cp.name);
         const cachedModels = JSON.parse(cp.fetched_models || "[]");
+        // Models the admin hid from this listing (routing still allows them)
+        const disabledModels = new Set(JSON.parse(cp.disabled_models || "[]"));
 
         // Try to fetch fresh models with full details from the provider
         let liveModels = cachedModels;
@@ -1691,6 +2080,8 @@ async function handleModelsEndpoint(env, corsHeaders) {
         for (const model of liveModels) {
           if (!model || !model.id) continue;
           const modelId = model.id;
+          // Hidden by admin — omitted from the listing only, still routable
+          if (disabledModels.has(modelId)) continue;
           // Model ID format: {slug}/{model_name} e.g. "bai/glm-5.3-flash"
           const fullId = `${slug}/${modelId}`;
           allModels.push({
@@ -1714,33 +2105,6 @@ async function handleModelsEndpoint(env, corsHeaders) {
     }
   } catch (e) {
     console.error("Models endpoint error:", e);
-  }
-
-  // 3. Model aliases (short names that map to full model IDs)
-  try {
-    const { results: aliases } = await env.DB.prepare(
-      "SELECT alias, model_id, display_name, context_window FROM model_aliases WHERE enabled = 1"
-    ).all();
-    if (aliases) {
-      for (const a of aliases) {
-        allModels.push({
-          id: a.alias,
-          object: "model",
-          created: 1700000000,
-          owned_by: "cfrouter",
-          provider_id: "cf_cluster",
-          provider_type: "cloudflare",
-          alias_for: a.model_id,
-          context_window: a.context_window || null,
-          capabilities: {},
-          permission: [],
-          root: a.alias,
-          parent: null
-        });
-      }
-    }
-  } catch (e) {
-    console.error("Models endpoint alias error:", e);
   }
 
   return new Response(JSON.stringify({
@@ -1833,82 +2197,6 @@ async function handleDeleteToken(request, env) {
     .bind(tokensToJSON(tokens), providerId).run();
 
   return new Response(null, { status: 302, headers: { "Location": "/admin/providers" } });
-}
-
-// ─── Model Alias Handlers ──────────────────────────────────────────────
-
-async function handleAddAlias(request, env) {
-  const body = await request.text();
-  const params = new URLSearchParams(body);
-  const alias = params.get("alias")?.trim().toLowerCase();
-  const modelId = params.get("model_id")?.trim();
-  const displayName = params.get("display_name")?.trim() || "";
-  const contextWindow = parseInt(params.get("context_window") || "0", 10);
-
-  if (!alias || !modelId) {
-    return new Response("Missing required fields", { status: 400 });
-  }
-
-  try {
-    await env.DB.prepare(
-      "INSERT INTO model_aliases (alias, model_id, display_name, context_window, enabled) VALUES (?, ?, ?, ?, 1)"
-    ).bind(alias, modelId, displayName, contextWindow || 0).run();
-  } catch (e) {
-    if (e.message?.includes("UNIQUE")) {
-      return new Response("An alias with this name already exists", { status: 409 });
-    }
-    throw e;
-  }
-
-  return new Response(null, { status: 302, headers: { "Location": "/admin/aliases?added=1" } });
-}
-
-async function handleEditAlias(request, env) {
-  const body = await request.text();
-  const params = new URLSearchParams(body);
-  const id = parseInt(params.get("id"));
-  const alias = params.get("alias")?.trim().toLowerCase();
-  const modelId = params.get("model_id")?.trim();
-  const displayName = params.get("display_name")?.trim() || "";
-  const contextWindow = parseInt(params.get("context_window") || "0", 10);
-
-  if (!id || !alias || !modelId) {
-    return new Response("Missing required fields", { status: 400 });
-  }
-
-  try {
-    await env.DB.prepare(
-      "UPDATE model_aliases SET alias = ?, model_id = ?, display_name = ?, context_window = ? WHERE id = ?"
-    ).bind(alias, modelId, displayName, contextWindow || 0, id).run();
-  } catch (e) {
-    if (e.message?.includes("UNIQUE")) {
-      return new Response("An alias with this name already exists", { status: 409 });
-    }
-    throw e;
-  }
-
-  return new Response(null, { status: 302, headers: { "Location": "/admin/aliases?edited=1" } });
-}
-
-async function handleDeleteAlias(request, env) {
-  const body = await request.text();
-  const params = new URLSearchParams(body);
-  const id = parseInt(params.get("id"));
-  if (!id) return new Response("Missing ID", { status: 400 });
-
-  await env.DB.prepare("DELETE FROM model_aliases WHERE id = ?").bind(id).run();
-  return new Response(null, { status: 302, headers: { "Location": "/admin/aliases?deleted=1" } });
-}
-
-async function handleToggleAlias(request, env) {
-  const body = await request.text();
-  const params = new URLSearchParams(body);
-  const id = parseInt(params.get("id"));
-  if (!id) return new Response("Missing ID", { status: 400 });
-
-  await env.DB.prepare("UPDATE model_aliases SET enabled = CASE WHEN enabled = 1 THEN 0 ELSE 1 END WHERE id = ?")
-    .bind(id).run();
-  return new Response(null, { status: 302, headers: { "Location": "/admin/aliases" } });
 }
 
 // ─── Token Management Handlers ──────────────────────────────────────────
@@ -2333,6 +2621,14 @@ function adminLayout(title, activeTab, content) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
       <span>Providers</span>
     </a>
+    <a href="/admin/models" class="nav-item ${activeTab === 'models' ? 'active' : ''}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+      <span>Models</span>
+    </a>
+    <a href="/admin/playground" class="nav-item ${activeTab === 'playground' ? 'active' : ''}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span>Playground</span>
+    </a>
     <a href="/admin/tokens" class="nav-item ${activeTab === 'tokens' ? 'active' : ''}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
       <span>Tokens</span>
@@ -2400,7 +2696,7 @@ async function renderAdminAnalytics(env, url) {
 
   // SQL aggregation: per-key breakdown
   const { results: keyStats } = await env.DB.prepare(`
-    SELECT COALESCE(k.name, 'anonymous') as key_name,
+    SELECT COALESCE(k.name, CASE WHEN u.api_key_id IS NULL THEN 'Playground' ELSE 'anonymous' END) as key_name,
            SUM(CAST(json_extract(uv.value, '$.calls') AS INTEGER)) as calls,
            SUM(CAST(json_extract(uv.value, '$.total_tokens') AS INTEGER)) as tokens,
            SUM(CAST(json_extract(uv.value, '$.prompt_tokens') AS INTEGER)) as prompt_tokens,
@@ -2675,6 +2971,17 @@ function providerSlug(name) {
     .substring(0, 32) || "provider";
 }
 
+// Escape values that originate outside the worker (upstream error text, ...)
+// before interpolating them into admin HTML.
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function parseTokens(tokensRaw) {
   try {
     const arr = JSON.parse(tokensRaw || "[]");
@@ -2800,7 +3107,7 @@ async function renderAdminProviders(env) {
         </div>
       </a>
       <div style="padding:0 24px 16px;display:flex;align-items:center;gap:10px">
-        <form method="POST" action="/admin/providers/toggle" style="display:inline">
+        <form method="POST" action="/admin/providers/toggle-custom" style="display:inline">
           <input type="hidden" name="id" value="${p.id}">
           <label class="toggle toggle-sm">
             <input type="submit" style="display:none">
@@ -2819,6 +3126,24 @@ async function renderAdminProviders(env) {
     </div>`;
   }).join("");
 
+  // Build catalog cards HTML
+  const catalogCardsHTML = PROVIDER_CATALOG.map(p => `
+    <div class="catalog-card" data-cat-id="${p.id}" data-cat="${p.category}" data-cat-name="${p.name.toLowerCase()}" data-cat-slug="${p.slug}" onclick="selectCatalogProvider('${p.id}')">
+      <div class="catalog-card-inner">
+        <div class="catalog-logo" style="background:${p.color}20;border-color:${p.color}40">
+          <span style="color:${p.color};font-weight:800;font-size:${p.letter.length > 2 ? '11' : '14'}px">${p.letter}</span>
+        </div>
+        <div class="catalog-card-body">
+          <div class="catalog-card-name">${p.name}</div>
+          <div class="catalog-card-desc">${p.description}</div>
+        </div>
+        <div class="catalog-card-meta">
+          ${p.hasFree ? '<span class="catalog-free-badge">★ Free</span>' : ''}
+          <a href="${p.website}" target="_blank" rel="noopener" class="catalog-get-key" onclick="event.stopPropagation()">Get API Key →</a>
+        </div>
+      </div>
+    </div>`).join("");
+
   const content = `
     <div class="page-header">
       <div class="page-header-left">
@@ -2826,7 +3151,7 @@ async function renderAdminProviders(env) {
         <p>Manage AI providers, API keys, and load balancing</p>
       </div>
       <div class="page-header-actions">
-        <button class="btn btn-primary" onclick="document.getElementById('addProviderSection').style.display=document.getElementById('addProviderSection').style.display==='none'?'block':'none'">+ Add Provider</button>
+        <button class="btn btn-primary" onclick="toggleManualForm()">+ Add Custom Provider</button>
       </div>
     </div>
 
@@ -2852,66 +3177,109 @@ async function renderAdminProviders(env) {
       </div>
     </div>
 
-    <!-- Search & Filter Bar -->
-    <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;align-items:center">
-      <div style="flex:1;min-width:240px;position:relative">
-        <svg style="position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:0.4" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" id="provider-search" placeholder="Search providers..." style="width:100%;padding:10px 14px 10px 40px;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius);color:var(--text-primary);font-size:13px;font-family:'Inter',sans-serif;outline:none;transition:var(--transition)" onfocus="this.style.borderColor='var(--border-active)'" onblur="this.style.borderColor='var(--border-subtle)'" oninput="filterProviders()">
+    <!-- ═══ Your Providers ═══ -->
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h3 style="font-size:15px;font-weight:700;color:var(--text-primary);margin:0">Your Providers</h3>
       </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sm filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
-        <button class="btn btn-sm filter-btn" data-filter="active" onclick="setFilter('active')">Active</button>
-        <button class="btn btn-sm filter-btn" data-filter="disabled" onclick="setFilter('disabled')">Disabled</button>
+
+      <!-- Search & Filter Bar -->
+      <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+        <div style="flex:1;min-width:240px;position:relative">
+          <svg style="position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:0.4" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="provider-search" placeholder="Search your providers..." style="width:100%;padding:10px 14px 10px 40px;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius);color:var(--text-primary);font-size:13px;font-family:'Inter',sans-serif;outline:none;transition:var(--transition)" onfocus="this.style.borderColor='var(--border-active)'" onblur="this.style.borderColor='var(--border-subtle)'" oninput="filterProviders()">
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+          <button class="btn btn-sm filter-btn" data-filter="active" onclick="setFilter('active')">Active</button>
+          <button class="btn btn-sm filter-btn" data-filter="disabled" onclick="setFilter('disabled')">Disabled</button>
+        </div>
+      </div>
+
+      <!-- Add Provider Form -->
+      <div id="addProviderSection" style="display:none;margin-bottom:24px;background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:24px">
+        <div id="catalog-prefill-banner" style="display:none;margin-bottom:16px;padding:12px 16px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;align-items:center;gap:12px">
+          <div id="prefill-logo" style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div id="prefill-name" style="font-size:14px;font-weight:700;color:var(--text-primary)"></div>
+            <div id="prefill-desc" style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+          </div>
+          <a id="prefill-link" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-secondary" style="white-space:nowrap;font-size:11px;text-decoration:none">Get API Key →</a>
+        </div>
+        <h3 style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:16px">
+          <span id="form-title-text">Add New Provider</span>
+        </h3>
+        <form method="POST" action="/admin/providers/add" id="add-provider-form">
+          <input type="hidden" name="catalog_id" id="catalog-id-field" value="">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="form-group">
+              <label>Provider Name</label>
+              <input type="text" name="name" id="provider-name-input" placeholder="e.g. My OpenAI Proxy" required>
+            </div>
+            <div class="form-group">
+              <label>Provider ID (slug)</label>
+              <input type="text" name="slug" id="provider-slug-input" placeholder="e.g. my-openai-proxy" pattern="[a-z0-9-]+" title="Lowercase letters, numbers, and hyphens only">
+              <small style="color:var(--text-muted);font-size:11px;margin-top:4px;display:block">Used in model IDs: <code id="slug-preview">slug/model-name</code></small>
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+              <label>Base URL</label>
+              <input type="url" name="base_url" id="provider-url-input" placeholder="https://api.example.com/v1" required>
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+              <label>API Tokens (one per line)</label>
+              <textarea name="tokens" id="provider-tokens-input" placeholder="sk-token-1&#10;sk-token-2&#10;sk-token-3" required></textarea>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Add Provider</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('addProviderSection').style.display='none'">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Provider Cards Grid -->
+      <div id="provider-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:32px">
+        ${providerCards || '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px;background:var(--bg-card);border-radius:var(--radius-lg);border:1px dashed var(--border-medium);grid-column:1/-1">No providers yet. Pick one from the catalog below or click "+ Add Custom Provider".</div>'}
       </div>
     </div>
 
-    <!-- Add Provider Form -->
-    <div id="addProviderSection" style="display:none;margin-bottom:24px;background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:24px">
-      <h3 style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:16px">Add New Provider</h3>
-      <form method="POST" action="/admin/providers/add">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-group">
-            <label>Provider Name</label>
-            <input type="text" name="name" placeholder="e.g. My OpenAI Proxy" required>
-          </div>
-          <div class="form-group">
-            <label>Provider ID (slug)</label>
-            <input type="text" name="slug" placeholder="e.g. my-openai-proxy" pattern="[a-z0-9-]+" title="Lowercase letters, numbers, and hyphens only">
-            <small style="color:var(--text-muted);font-size:11px;margin-top:4px;display:block">Used in model IDs: <code id="slug-preview">slug/model-name</code></small>
-          </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>Base URL</label>
-            <input type="url" name="base_url" placeholder="https://api.example.com/v1" required>
-          </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>API Tokens (one per line)</label>
-            <textarea name="tokens" placeholder="sk-token-1&#10;sk-token-2&#10;sk-token-3" required></textarea>
-          </div>
+    <!-- ═══ Provider Catalog — Quick Start ═══ -->
+    <div class="catalog-section">
+      <div class="catalog-header">
+        <div>
+          <h3 style="font-size:16px;font-weight:700;color:var(--text-primary);margin:0 0 4px 0">⚡ Quick Start — Pick a Provider</h3>
+          <p style="font-size:12px;color:var(--text-muted);margin:0">Choose a provider below, get your API key from their website, then paste it here.</p>
         </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">Add Provider</button>
-          <button type="button" class="btn btn-secondary" onclick="document.getElementById('addProviderSection').style.display='none'">Cancel</button>
-        </div>
-      </form>
-      <script>
-        document.querySelector('#addProviderSection input[name="name"]').addEventListener('input', function() {
-          const slug = this.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 32) || 'provider';
-          document.getElementById('slug-preview').textContent = slug + '/model-name';
-          const slugInput = document.querySelector('#addProviderSection input[name="slug"]');
-          if (!slugInput.dataset.touched) slugInput.value = slug;
-        });
-        document.querySelector('#addProviderSection input[name="slug"]').addEventListener('input', function() {
-          this.dataset.touched = 'true';
-        });
-      </script>
+      </div>
+
+      <!-- Catalog Search -->
+      <div style="position:relative;margin-bottom:12px">
+        <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:0.4" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="catalog-search" placeholder="Search catalog providers..." oninput="filterCatalog()" style="width:100%;padding:8px 12px 8px 34px;background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);border-radius:var(--radius);color:var(--text-primary);font-size:12px;font-family:'Inter',sans-serif;outline:none;transition:var(--transition)">
+      </div>
+
+      <!-- Category Tabs -->
+      <div class="catalog-tabs">
+        <button class="catalog-tab active" data-cat-filter="all" onclick="setCatalogFilter('all',this)">All</button>
+        <button class="catalog-tab" data-cat-filter="frontier" onclick="setCatalogFilter('frontier',this)">Frontier</button>
+        <button class="catalog-tab" data-cat-filter="inference" onclick="setCatalogFilter('inference',this)">Inference</button>
+        <button class="catalog-tab" data-cat-filter="gateway" onclick="setCatalogFilter('gateway',this)">Gateway</button>
+        <button class="catalog-tab" data-cat-filter="regional" onclick="setCatalogFilter('regional',this)">Regional</button>
+        <button class="catalog-tab" data-cat-filter="enterprise" onclick="setCatalogFilter('enterprise',this)">Enterprise</button>
+        <button class="catalog-tab" data-cat-filter="media" onclick="setCatalogFilter('media',this)">Media</button>
+        <button class="catalog-tab" data-cat-filter="free" onclick="setCatalogFilter('free',this)">★ Free Tier</button>
+      </div>
+
+      <!-- Catalog Grid -->
+      <div class="catalog-grid" id="catalog-grid">
+        ${catalogCardsHTML}
+      </div>
     </div>
 
-    <!-- Provider Cards Grid -->
-    <div id="provider-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:32px">
-      ${providerCards || '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px;background:var(--bg-card);border-radius:var(--radius-lg);border:1px dashed var(--border-medium);grid-column:1/-1">No providers yet. Click "+ Add Provider" to add your first AI provider.</div>'}
-    </div>
+
 
     <script>
+    // ── Your Providers filter ──
     var currentFilter = 'all';
     function setFilter(f) {
       currentFilter = f;
@@ -2934,14 +3302,141 @@ async function renderAdminProviders(env) {
         .then(r => r.json()).then(d => { alert(d.ok ? 'Provider is reachable!' : ('Error: ' + (d.error || 'Unknown error'))); })
         .catch(e => { alert('Test failed: ' + e.message); });
     }
+
+    // ── Manual form toggle (resets any catalog prefill) ──
+    function toggleManualForm() {
+      var section = document.getElementById('addProviderSection');
+      if (section.style.display === 'none' || !section.style.display) {
+        document.getElementById('catalog-prefill-banner').style.display = 'none';
+        document.getElementById('provider-name-input').value = '';
+        document.getElementById('provider-slug-input').value = '';
+        delete document.getElementById('provider-slug-input').dataset.touched;
+        document.getElementById('provider-url-input').value = '';
+        document.getElementById('provider-tokens-input').value = '';
+        document.getElementById('catalog-id-field').value = '';
+        document.getElementById('form-title-text').textContent = 'Add New Provider';
+        document.getElementById('slug-preview').textContent = 'slug/model-name';
+        section.style.display = 'block';
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('provider-name-input').focus();
+      } else {
+        section.style.display = 'none';
+      }
+    }
+
+    // ── Catalog filter & search ──
+    var CATALOG_DATA = ${JSON.stringify(PROVIDER_CATALOG)};
+    var currentCatalogFilter = 'all';
+
+    function setCatalogFilter(cat, btn) {
+      currentCatalogFilter = cat;
+      document.querySelectorAll('.catalog-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filterCatalog();
+    }
+
+    function filterCatalog() {
+      var q = (document.getElementById('catalog-search').value || '').toLowerCase();
+      document.querySelectorAll('.catalog-card').forEach(card => {
+        var name = (card.dataset.catName || '');
+        var slug = (card.dataset.catSlug || '');
+        var cat = card.dataset.cat || '';
+        var isFree = card.querySelector('.catalog-free-badge') !== null;
+        var matchSearch = !q || name.includes(q) || slug.includes(q);
+        var matchCat = currentCatalogFilter === 'all' || cat === currentCatalogFilter || (currentCatalogFilter === 'free' && isFree);
+        card.style.display = (matchSearch && matchCat) ? '' : 'none';
+      });
+    }
+
+    // ── Select catalog provider → open form pre-filled ──
+    function selectCatalogProvider(id) {
+      var p = CATALOG_DATA.find(x => x.id === id);
+      if (!p) return;
+
+      // Show form
+      var section = document.getElementById('addProviderSection');
+      section.style.display = 'block';
+
+      // Show prefill banner
+      var banner = document.getElementById('catalog-prefill-banner');
+      banner.style.display = 'flex';
+      document.getElementById('prefill-logo').style.background = p.color + '20';
+      document.getElementById('prefill-logo').style.border = '1px solid ' + p.color + '40';
+      document.getElementById('prefill-logo').innerHTML = '<span style="color:' + p.color + ';font-weight:800;font-size:12px">' + p.letter + '</span>';
+      document.getElementById('prefill-name').textContent = p.name;
+      document.getElementById('prefill-desc').textContent = p.description;
+      var link = document.getElementById('prefill-link');
+      link.href = p.website;
+
+      // Fill form fields
+      document.getElementById('provider-name-input').value = p.name;
+      document.getElementById('provider-slug-input').value = p.slug;
+      document.getElementById('provider-slug-input').dataset.touched = 'true';
+      document.getElementById('provider-url-input').value = p.baseUrl;
+      document.getElementById('catalog-id-field').value = p.id;
+      document.getElementById('form-title-text').textContent = 'Add ' + p.name;
+      document.getElementById('slug-preview').textContent = p.slug + '/model-name';
+
+      // Focus tokens field
+      document.getElementById('provider-tokens-input').focus();
+
+      // Scroll to form
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ── Form slug auto-generation ──
+    document.querySelector('#addProviderSection input[name="name"]').addEventListener('input', function() {
+      if (document.getElementById('provider-slug-input').dataset.touched) return;
+      const slug = this.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 32) || 'provider';
+      document.getElementById('slug-preview').textContent = slug + '/model-name';
+      document.getElementById('provider-slug-input').value = slug;
+    });
+    document.querySelector('#addProviderSection input[name="slug"]').addEventListener('input', function() {
+      this.dataset.touched = 'true';
+      document.getElementById('slug-preview').textContent = this.value + '/model-name';
+    });
     </script>
 
     <style>
+      /* ── Existing filter buttons ── */
       .filter-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:500;background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-secondary);cursor:pointer;transition:var(--transition)}
       .filter-btn:hover{border-color:var(--border-medium);color:var(--text-primary)}
       .filter-btn.active{background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);color:var(--accent-blue)}
+
+      /* ── Catalog Section ── */
+      .catalog-section{margin-bottom:28px;background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:20px 24px}
+      .catalog-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+
+      /* ── Catalog Tabs ── */
+      .catalog-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+      .catalog-tab{padding:5px 12px;border-radius:7px;font-size:11px;font-weight:600;background:transparent;border:1px solid var(--border-subtle);color:var(--text-secondary);cursor:pointer;transition:var(--transition);font-family:'Inter',sans-serif}
+      .catalog-tab:hover{border-color:var(--border-medium);color:var(--text-primary)}
+      .catalog-tab.active{background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);color:var(--accent-blue)}
+
+      /* ── Catalog Grid ── */
+      .catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+      .catalog-card{background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);border-radius:10px;cursor:pointer;transition:all 0.2s cubic-bezier(0.4,0,0.2,1);overflow:hidden}
+      .catalog-card:hover{border-color:var(--border-active);transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,0.3)}
+      .catalog-card-inner{padding:14px 16px;display:flex;align-items:flex-start;gap:12px}
+
+      /* ── Catalog Logo ── */
+      .catalog-logo{width:40px;height:40px;border-radius:10px;border:1px solid;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+      /* ── Catalog Card Body ── */
+      .catalog-card-body{flex:1;min-width:0}
+      .catalog-card-name{font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .catalog-card-desc{font-size:10px;color:var(--text-muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+      /* ── Catalog Meta ── */
+      .catalog-card-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+      .catalog-free-badge{font-size:9px;font-weight:700;color:#10b981;background:rgba(16,185,129,0.1);padding:2px 6px;border-radius:5px;white-space:nowrap}
+      .catalog-get-key{font-size:9px;font-weight:600;color:var(--accent-blue);text-decoration:none;white-space:nowrap;opacity:0.7;transition:opacity 0.2s}
+      .catalog-get-key:hover{opacity:1}
+
+      /* ── Responsive ── */
       @media(max-width:1100px){#provider-grid{grid-template-columns:repeat(2,1fr)}}
-      @media(max-width:700px){#provider-grid{grid-template-columns:1fr}}
+      @media(max-width:900px){.catalog-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}}
+      @media(max-width:700px){#provider-grid{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}}
   `;
 
   return new Response(adminLayout("Providers", "providers", content), {
@@ -2949,193 +3444,844 @@ async function renderAdminProviders(env) {
   });
 }
 
-// ─── Admin: Model Aliases Tab ──────────────────────────────────────────
+// ─── Admin: Models Tab (curate what /models advertises) ──────────────────
 
-async function renderAdminAliases(env) {
-  const { results: aliases } = await env.DB.prepare(
-    "SELECT * FROM model_aliases ORDER BY enabled DESC, alias ASC"
+async function renderAdminModels(env, url) {
+  const { results: providers } = await env.DB.prepare(
+    "SELECT id, name, slug, enabled, disabled_models, fetched_models FROM custom_providers ORDER BY enabled DESC, name"
   ).all();
 
-  const total = aliases ? aliases.length : 0;
-  const enabledCount = aliases ? aliases.filter(a => a.enabled === 1).length : 0;
+  // A disabled provider has no models in the live catalog — /models and the
+  // playground both skip the provider outright — so its models are left out
+  // here too. Listing them would only offer switches that change nothing.
+  // They are counted in the banner below so the provider's models never look
+  // like they vanished.
+  const offProviders = (providers || []).filter(p => p.enabled !== 1);
+  const offModels = offProviders.reduce((n, p) => n + modelIdsOf(p.fetched_models).length, 0);
 
-  const aliasRows = (aliases || []).map(a => `
-    <tr style="${a.enabled ? '' : 'opacity:0.5;'}">
-      <td>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span class="mono" style="color:var(--accent-blue);font-weight:600">${a.alias}</span>
-          ${a.enabled ? '' : '<span class="badge badge-slate" style="font-size:9px">Disabled</span>'}
-        </div>
-      </td>
-      <td class="mono" style="color:var(--text-secondary);font-size:12px">${a.model_id}</td>
-      <td style="font-weight:500">${a.display_name || '—'}</td>
-      <td class="mono" style="color:var(--text-muted)">${a.context_window ? (a.context_window / 1000).toFixed(0) + 'k' : '—'}</td>
+  // One flat row per model. `fetched_models` is a string[] when written by
+  // handleFetchModels and an object array when written by handleAddProvider /
+  // handleModelsEndpoint, so normalize both shapes here.
+  const rows = [];
+  for (const p of (providers || [])) {
+    if (p.enabled !== 1) continue;
+    const slug = p.slug || providerSlug(p.name);
+    const raw = JSON.parse(p.fetched_models || "[]");
+    if (!Array.isArray(raw)) continue;
+    let disabled;
+    try { disabled = new Set(JSON.parse(p.disabled_models || "[]")); } catch { disabled = new Set(); }
+    for (const m of raw) {
+      const mid = typeof m === "string" ? m : m?.id;
+      if (typeof mid !== "string" || mid.length === 0) continue;
+      rows.push({
+        pid: p.id,
+        pslug: slug,
+        pname: p.name,
+        mid,
+        disabled: disabled.has(mid),
+        ctx: (typeof m === "object" && m && Number(m.context_window)) || 0
+      });
+    }
+  }
+
+  const totalModels = rows.length;
+  const disabledModels = rows.filter(r => r.disabled).length;
+  const enabledModels = totalModels - disabledModels;
+  const providerCount = new Set(rows.map(r => r.pid)).size;
+
+  const providerOptions = (providers || [])
+    .filter(p => rows.some(r => r.pid === p.id))
+    .map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
+    .join("");
+
+  // Server-render the first page only so the page is readable without JS; the
+  // client takes over filtering and pagination from the same DATA blob.
+  const FIRST_PAGE = 100;
+
+  const renderRow = (r, idx) => `
+    <tr data-idx="${idx}" style="${r.disabled ? 'opacity:0.5;' : ''}">
+      <td class="sel-cell"><input type="checkbox" class="sel-box" data-i="${idx}" onchange="toggleSelect(this)"></td>
+      <td><span class="badge badge-slate">${escapeHtml(r.pname)}</span></td>
+      <td><span class="mono" style="color:var(--text-secondary)">${escapeHtml(r.pslug)}/</span><span class="mono" style="color:var(--accent-blue);font-weight:600">${escapeHtml(r.mid)}</span></td>
+      <td class="mono" style="color:var(--text-muted)">${r.ctx ? (r.ctx / 1000).toFixed(0) + 'k' : '—'}</td>
       <td style="text-align:center">
-        <form method="POST" action="/admin/aliases/toggle" style="display:inline">
-          <input type="hidden" name="id" value="${a.id}">
-          <label class="toggle toggle-sm">
-            <input type="submit" style="display:none">
-            <input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="this.form.submit()">
-            <span class="slider"></span>
-          </label>
-        </form>
+        <span class="model-state" style="font-size:11px;font-weight:600;color:${r.disabled ? 'var(--accent-amber)' : 'var(--accent-green)'}">${r.disabled ? 'Hidden' : 'Listed'}</span>
       </td>
-      <td style="text-align:right">
-        <div style="display:flex;gap:6px;justify-content:flex-end">
-          <button type="button" class="btn-icon edit" onclick="openEditAliasModal(${a.id})" title="Edit">✏️</button>
-          <form method="POST" action="/admin/aliases/delete" onsubmit="return confirm('Delete this alias? Users who use \`${a.alias}\` will no longer be able to.')" style="display:inline">
-            <input type="hidden" name="id" value="${a.id}">
-            <button type="submit" class="btn-icon danger" title="Delete">✕</button>
-          </form>
-        </div>
+      <td style="text-align:center">
+        <label class="toggle toggle-sm">
+          <input type="checkbox" data-pid="${r.pid}" data-mid="${escapeHtml(r.mid)}" ${r.disabled ? '' : 'checked'} onchange="toggleModel(this)">
+          <span class="slider"></span>
+        </label>
       </td>
-    </tr>
-  `).join("");
+    </tr>`;
+
+  const firstPageRows = rows.slice(0, FIRST_PAGE).map(renderRow).join("");
+
+  // Escape "<" so an upstream-supplied model name can never close this script tag
+  const dataBlob = JSON.stringify(rows).replace(/</g, "\\u003c");
 
   const content = `
     <div class="page-header">
       <div class="page-header-left">
-        <h2>Model Aliases</h2>
-        <p>Short names that map to full model IDs from your providers</p>
+        <h2>Models</h2>
+        <p>Choose which models appear at <span class="mono">/models</span>. Hidden models stay callable by ID.</p>
       </div>
       <div class="page-header-actions">
-        <button class="btn btn-primary" onclick="document.getElementById('addAliasSection').style.display=document.getElementById('addAliasSection').style.display==='none'?'block':'none'">+ New Alias</button>
+        <button class="btn btn-secondary btn-sm" onclick="bulkModels(false)">Hide all filtered</button>
+        <button class="btn btn-secondary btn-sm" onclick="bulkModels(true)">Show all filtered</button>
       </div>
     </div>
 
     <div class="stat-grid">
       <div class="stat-card blue">
-        <div class="label">Total Aliases</div>
-        <div class="value">${total}</div>
+        <div class="label">Total Models</div>
+        <div class="value" id="stat-total">${totalModels}</div>
+        <div class="sub">across ${providerCount} provider${providerCount === 1 ? '' : 's'}</div>
       </div>
       <div class="stat-card green">
-        <div class="label">Active</div>
-        <div class="value">${enabledCount}</div>
+        <div class="label">Listed</div>
+        <div class="value" id="stat-enabled">${enabledModels}</div>
+        <div class="sub">visible at /models</div>
       </div>
       <div class="stat-card amber">
-        <div class="label">Disabled</div>
-        <div class="value">${total - enabledCount}</div>
+        <div class="label">Hidden</div>
+        <div class="value" id="stat-disabled">${disabledModels}</div>
+        <div class="sub">routing unaffected</div>
       </div>
     </div>
 
-    <!-- Add Alias Form -->
-    <div id="addAliasSection" class="form-card" style="display:none">
-      <h3>➕ Add Model Alias</h3>
-      <form method="POST" action="/admin/aliases/add">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Alias (Short Name)</label>
-            <input type="text" name="alias" placeholder="e.g. gpt-4o" required pattern="[a-z0-9._-]+" style="font-family:'SF Mono',Consolas,monospace">
-            <small style="color:var(--text-muted);font-size:11px;margin-top:4px;display:block">Users send this in the <code>model</code> field</small>
-          </div>
-          <div class="form-group">
-            <label>Display Name</label>
-            <input type="text" name="display_name" placeholder="e.g. GPT-4o">
-          </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>Full Model ID</label>
-            <input type="text" name="model_id" placeholder="e.g. openai/gpt-4o" required style="font-family:'SF Mono',Consolas,monospace">
-          </div>
-          <div class="form-group">
-            <label>Context Window</label>
-            <input type="number" name="context_window" placeholder="e.g. 128000" min="0">
-          </div>
+    <div class="form-card" style="padding:16px 20px">
+      <div class="model-filters">
+        <div class="form-group">
+          <label>Provider</label>
+          <select id="f-provider" onchange="applyFilters()">
+            <option value="">All providers</option>
+            ${providerOptions}
+          </select>
         </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">Add Alias</button>
-          <button type="button" class="btn btn-secondary" onclick="document.getElementById('addAliasSection').style.display='none'">Cancel</button>
+        <div class="form-group">
+          <label>Search</label>
+          <input type="text" id="f-search" placeholder="Filter by model ID…" oninput="applyFilters()" style="font-family:'SF Mono',Consolas,monospace">
         </div>
-      </form>
+        <div class="form-group">
+          <label>Show</label>
+          <select id="f-state" onchange="applyFilters()">
+            <option value="all">All models</option>
+            <option value="on">Listed only</option>
+            <option value="off">Hidden only</option>
+          </select>
+        </div>
+      </div>
     </div>
 
-    <!-- Alias Table -->
+    <!-- Selection bar — only rendered when something is checked -->
+    <div class="sel-bar" id="sel-bar" style="display:none">
+      <span class="sel-count" id="sel-count">0 selected</span>
+      <button class="btn btn-secondary btn-sm" id="sel-all-filtered" onclick="selectAllFiltered()">Select all filtered</button>
+      <button class="btn btn-secondary btn-sm" onclick="clearSelection()">Clear</button>
+      <span class="sel-spacer"></span>
+      <button class="btn btn-secondary btn-sm" onclick="bulkSelection(false)">Hide selected</button>
+      <button class="btn btn-secondary btn-sm" onclick="bulkSelection(true)">Show selected</button>
+    </div>
+
     <div class="table-wrap">
       <div class="table-scroll">
         <table>
           <thead>
             <tr>
-              <th>Alias</th>
-              <th>Full Model ID</th>
-              <th>Display Name</th>
+              <th class="sel-cell"><input type="checkbox" class="sel-box" id="sel-all" title="Select every model on this page" onchange="toggleSelectPage(this)"></th>
+              <th>Provider</th>
+              <th>Model ID</th>
               <th>Context</th>
-              <th style="text-align:center">Enabled</th>
-              <th style="text-align:right">Actions</th>
+              <th style="text-align:center">Status</th>
+              <th style="text-align:center">Listed</th>
             </tr>
           </thead>
-          <tbody>
-            ${aliasRows || '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)">No aliases configured. Add one above to create a short model name.</td></tr>'}
+          <tbody id="models-tbody">
+            ${firstPageRows || '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)">No models yet. Add a provider and fetch its models first.</td></tr>'}
           </tbody>
         </table>
       </div>
+      <div id="models-pager" class="models-pager"></div>
     </div>
 
-    <!-- Info -->
-    <div style="margin-top:20px;padding:16px 20px;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.15);border-radius:var(--radius);font-size:13px;color:var(--text-secondary);line-height:1.6">
-      <strong style="color:var(--accent-blue)">ℹ️ How aliases work:</strong><br>
-      When a user sends a request with <code style="color:var(--accent-blue)">model: "gpt-oss-120b"</code>, the gateway resolves it to the full model ID before forwarding.
-      The response model field is rewritten back to the alias name so users always see their short name.
-      Both the alias and full model ID work — they just route to the same provider.
-    </div>
-
-    <!-- Edit Alias Modal -->
-    <div id="editAliasModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('show')">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Edit Alias</h3>
-          <button onclick="this.closest('.modal-overlay').classList.remove('show')" class="modal-close">&times;</button>
-        </div>
-        <form method="POST" action="/admin/aliases/edit">
-          <input type="hidden" id="ea-id" name="id">
-          <div class="form-group" style="margin-bottom:16px">
-            <label>Alias (Short Name)</label>
-            <input type="text" id="ea-alias" name="alias" required pattern="[a-z0-9._-]+" style="font-family:'SF Mono',Consolas,monospace">
-          </div>
-          <div class="form-group" style="margin-bottom:16px">
-            <label>Full Model ID</label>
-            <input type="text" id="ea-model-id" name="model_id" required style="font-family:'SF Mono',Consolas,monospace">
-          </div>
-          <div class="form-group" style="margin-bottom:16px">
-            <label>Display Name</label>
-            <input type="text" id="ea-display-name" name="display_name">
-          </div>
-          <div class="form-group" style="margin-bottom:20px">
-            <label>Context Window</label>
-            <input type="number" id="ea-context" name="context_window" min="0">
-          </div>
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Save Changes</button>
-            <button type="button" onclick="this.closest('.modal-overlay').classList.remove('show')" class="btn btn-secondary">Cancel</button>
-          </div>
-        </form>
-      </div>
+    <div style="margin-top:20px;padding:16px 20px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:var(--radius);font-size:13px;color:var(--text-secondary);line-height:1.6">
+      <strong style="color:var(--accent-amber)">i️ Hiding a model only affects the public list.</strong><br>
+      <span class="mono" style="color:var(--text-primary)">POST /v1/chat/completions</span> with a hidden model ID keeps working exactly as before, so existing callers never break.
     </div>
 
     <style>
-      .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center}
-      .modal-overlay.show{display:flex}
-      .modal{background:var(--bg-secondary);backdrop-filter:blur(24px);border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:28px;width:90%;max-width:500px;box-shadow:0 25px 60px rgba(0,0,0,0.5)}
-      .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-      .modal-header h3{margin:0;font-size:16px;font-weight:700;color:var(--text-primary)}
-      .modal-close{background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer;padding:0;line-height:1;transition:var(--transition)}
-      .modal-close:hover{color:var(--text-primary)}
+      .model-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+      .sel-cell{width:38px;padding-left:16px;padding-right:0}
+      .sel-box{width:15px;height:15px;accent-color:var(--accent-blue);cursor:pointer;vertical-align:middle}
+      .sel-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:10px 16px;border-radius:var(--radius);background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.22);font-size:12px;color:var(--text-secondary)}
+      .sel-bar .sel-count{font-weight:700;color:var(--accent-blue)}
+      .sel-bar .sel-spacer{flex:1;min-width:8px}
+      .models-pager{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--border-subtle);font-size:12px;color:var(--text-muted);flex-wrap:wrap}
+      .models-pager button{padding:5px 11px;border-radius:7px;background:rgba(255,255,255,0.04);border:1px solid var(--border-subtle);color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:var(--transition)}
+      .models-pager button:hover:not(:disabled){background:rgba(255,255,255,0.08);color:var(--text-primary)}
+      .models-pager button:disabled{opacity:0.35;cursor:not-allowed}
+      @media(max-width:768px){.model-filters{grid-template-columns:1fr}}
     </style>
 
     <script>
-    var aliasData = ${JSON.stringify((aliases || []).reduce((m, a) => { m[a.id] = {alias: a.alias, model_id: a.model_id, display_name: a.display_name || '', context_window: a.context_window || 0}; return m; }, {}))};
-    function openEditAliasModal(id) {
-      var d = aliasData[id];
-      if (!d) return;
-      document.getElementById('ea-id').value = id;
-      document.getElementById('ea-alias').value = d.alias;
-      document.getElementById('ea-model-id').value = d.model_id;
-      document.getElementById('ea-display-name').value = d.display_name;
-      document.getElementById('ea-context').value = d.context_window || '';
-      document.getElementById('editAliasModal').classList.add('show');
+    var DATA = ${dataBlob};
+    var PAGE_SIZE = 50;
+    var page = 0;
+    var filtered = DATA.slice();
+    // Selection is tracked by index into DATA, not by row position, so it
+    // survives paging and changes to the filters.
+    var selected = {};
+    DATA.forEach(function (r, i) { r.i = i; });
+
+    function showToast(message, type) {
+      var existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+      var t = document.createElement('div');
+      t.className = 'toast';
+      var ok = type !== 'error';
+      t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:500;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:600;backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.4);' +
+        (ok ? 'background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3)'
+            : 'background:rgba(244,63,94,0.15);color:#f43f5e;border:1px solid rgba(244,63,94,0.3)');
+      t.textContent = message; // textContent — never innerHTML
+      document.body.appendChild(t);
+      setTimeout(function () { t.remove(); }, 2500);
+    }
+
+    // Recompute the visible set from the controls. Kept separate from
+    // applyFilters so a bulk edit can refresh the rows without also throwing
+    // away the page the user is reading.
+    function computeFiltered() {
+      var pid = document.getElementById('f-provider').value;
+      var term = document.getElementById('f-search').value.trim().toLowerCase();
+      var state = document.getElementById('f-state').value;
+      filtered = DATA.filter(function (r) {
+        if (pid && String(r.pid) !== pid) return false;
+        if (term && r.mid.toLowerCase().indexOf(term) === -1) return false;
+        if (state === 'on' && r.disabled) return false;
+        if (state === 'off' && !r.disabled) return false;
+        return true;
+      });
+    }
+
+    function applyFilters() {
+      computeFiltered();
+      page = 0;
+      renderPage();
+    }
+
+    function renderPage() {
+      var tbody = document.getElementById('models-tbody');
+      var pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      if (page >= pages) page = pages - 1;
+      var slice = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+      if (slice.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)">No models match these filters.</td></tr>';
+      } else {
+        tbody.innerHTML = slice.map(function (r) {
+          var ctx = r.ctx ? (r.ctx / 1000).toFixed(0) + 'k' : '—';
+          var stateColor = r.disabled ? 'var(--accent-amber)' : 'var(--accent-green)';
+          return '<tr style="' + (r.disabled ? 'opacity:0.5;' : '') + '">' +
+            '<td class="sel-cell"><input type="checkbox" class="sel-box" data-i="' + r.i + '"' +
+              (selected[r.i] ? ' checked' : '') + ' onchange="toggleSelect(this)"></td>' +
+            '<td><span class="badge badge-slate">' + esc(r.pname) + '</span></td>' +
+            '<td><span class="mono" style="color:var(--text-secondary)">' + esc(r.pslug) + '/</span>' +
+              '<span class="mono" style="color:var(--accent-blue);font-weight:600">' + esc(r.mid) + '</span></td>' +
+            '<td class="mono" style="color:var(--text-muted)">' + ctx + '</td>' +
+            '<td style="text-align:center"><span class="model-state" style="font-size:11px;font-weight:600;color:' + stateColor + '">' +
+              (r.disabled ? 'Hidden' : 'Listed') + '</span></td>' +
+            '<td style="text-align:center"><label class="toggle toggle-sm">' +
+              '<input type="checkbox" data-pid="' + r.pid + '" data-mid="' + esc(r.mid) + '" ' +
+              (r.disabled ? '' : 'checked') + ' onchange="toggleModel(this)"><span class="slider"></span></label></td>' +
+            '</tr>';
+        }).join('');
+      }
+      var pager = document.getElementById('models-pager');
+      pager.innerHTML = filtered.length === 0 ? '' :
+        '<span>' + filtered.length + ' model' + (filtered.length === 1 ? '' : 's') +
+        ' · page ' + (page + 1) + ' of ' + pages + '</span>' +
+        '<button onclick="gotoPage(' + (page - 1) + ')" ' + (page === 0 ? 'disabled' : '') + '>‹ Prev</button>' +
+        '<button onclick="gotoPage(' + (page + 1) + ')" ' + (page >= pages - 1 ? 'disabled' : '') + '>Next ›</button>';
+      syncSelection();
+    }
+
+    // ── Selection ──────────────────────────────────────────────────────────
+    function selectedIndices() {
+      return Object.keys(selected).filter(function (k) { return selected[k]; }).map(Number);
+    }
+
+    function toggleSelect(checkbox) {
+      var i = Number(checkbox.dataset.i);
+      if (checkbox.checked) selected[i] = true; else delete selected[i];
+      syncSelection();
+    }
+
+    function toggleSelectPage(checkbox) {
+      var slice = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+      slice.forEach(function (r) {
+        if (checkbox.checked) selected[r.i] = true; else delete selected[r.i];
+      });
+      renderPage();
+    }
+
+    function selectAllFiltered() {
+      filtered.forEach(function (r) { selected[r.i] = true; });
+      renderPage();
+    }
+
+    function clearSelection() {
+      selected = {};
+      renderPage();
+    }
+
+    // Refresh the header checkbox, the bar's count and the bar's visibility.
+    // Called after every render so the three never drift apart.
+    function syncSelection() {
+      var count = selectedIndices().length;
+      var bar = document.getElementById('sel-bar');
+      bar.style.display = count === 0 ? 'none' : 'flex';
+      document.getElementById('sel-count').textContent = count + ' selected';
+      var allFiltered = filtered.length > 0 && filtered.every(function (r) { return selected[r.i]; });
+      var btn = document.getElementById('sel-all-filtered');
+      // Nothing to offer once everything visible is already selected (or there
+      // is nothing visible at all).
+      btn.style.display = (allFiltered || filtered.length === 0) ? 'none' : '';
+      btn.textContent = 'Select all ' + filtered.length + ' filtered';
+
+      var slice = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+      var onPage = slice.filter(function (r) { return selected[r.i]; }).length;
+      var head = document.getElementById('sel-all');
+      head.checked = slice.length > 0 && onPage === slice.length;
+      head.indeterminate = onPage > 0 && onPage < slice.length;
+    }
+
+    // Act on exactly what is checked — not on the whole filter.
+    async function bulkSelection(enabled) {
+      var idx = selectedIndices();
+      if (idx.length === 0) { showToast('Nothing selected', 'error'); return; }
+
+      var byProvider = {};
+      idx.forEach(function (i) {
+        var r = DATA[i];
+        if (!r) return;
+        if (!byProvider[r.pid]) byProvider[r.pid] = [];
+        byProvider[r.pid].push(r.mid);
+      });
+      var pids = Object.keys(byProvider);
+      if (!confirm((enabled ? 'Show ' : 'Hide ') + idx.length + ' selected model(s)?')) return;
+
+      var totalChanged = 0;
+      try {
+        for (var i = 0; i < pids.length; i++) {
+          var res = await fetch('/admin/models/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider_id: Number(pids[i]), enabled: enabled, model_ids: byProvider[pids[i]] })
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+          totalChanged += data.changed || 0;
+        }
+        idx.forEach(function (i) { if (DATA[i]) DATA[i].disabled = !enabled; });
+        selected = {};
+        refreshStats();
+        // The edited rows may no longer match the active filter — "Only hidden"
+        // after a Show, say — so recompute rather than leaving stale rows up.
+        computeFiltered();
+        renderPage();
+        showToast((enabled ? 'Listed ' : 'Hidden ') + totalChanged + ' model' + (totalChanged === 1 ? '' : 's'), 'success');
+      } catch (e) {
+        showToast('Bulk update failed: ' + e.message, 'error');
+        // Server state is unknown after a partial run — reload to resync
+        setTimeout(function () { location.reload(); }, 1500);
+      }
+    }
+
+    function gotoPage(n) {
+      var pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      page = Math.min(pages - 1, Math.max(0, n));
+      renderPage();
+    }
+
+    // Model IDs come from upstream providers, so escape everything interpolated
+    // into the table markup above.
+    function esc(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function refreshStats() {
+      var dis = DATA.filter(function (r) { return r.disabled; }).length;
+      document.getElementById('stat-total').textContent = DATA.length;
+      document.getElementById('stat-enabled').textContent = DATA.length - dis;
+      document.getElementById('stat-disabled').textContent = dis;
+    }
+
+    async function toggleModel(checkbox) {
+      var pid = parseInt(checkbox.dataset.pid, 10);
+      var mid = checkbox.dataset.mid;
+      var wanted = checkbox.checked;
+      var row = DATA.filter(function (r) { return r.pid === pid && r.mid === mid; })[0];
+      checkbox.disabled = true;
+      try {
+        var res = await fetch('/admin/models/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider_id: pid, model_id: mid, enabled: wanted })
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+        if (row) row.disabled = data.disabled === true;
+        checkbox.checked = !(data.disabled === true);
+        refreshStats();
+        renderPage();
+        showToast(data.disabled ? 'Hidden from /models' : 'Listed at /models', 'success');
+      } catch (e) {
+        checkbox.checked = !wanted; // revert the optimistic flip
+        showToast('Failed: ' + e.message, 'error');
+      } finally {
+        checkbox.disabled = false;
+      }
+    }
+
+    async function bulkModels(enabled) {
+      // Group the *filtered* rows by provider and send the explicit IDs, so a
+      // search or state filter narrows the action instead of hitting every
+      // model the provider reports.
+      var byProvider = {};
+      filtered.forEach(function (r) {
+        if (!byProvider[r.pid]) byProvider[r.pid] = [];
+        byProvider[r.pid].push(r.mid);
+      });
+      var pids = Object.keys(byProvider);
+      if (pids.length === 0) { showToast('Nothing to change', 'error'); return; }
+      var verb = enabled ? 'show' : 'hide';
+      if (!confirm('This will ' + verb + ' ' + filtered.length + ' model(s) in the current filter.')) return;
+
+      var totalChanged = 0;
+      try {
+        for (var i = 0; i < pids.length; i++) {
+          var res = await fetch('/admin/models/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider_id: Number(pids[i]), enabled: enabled, model_ids: byProvider[pids[i]] })
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+          totalChanged += data.changed || 0;
+        }
+        // Only the providers in the filter were touched, so mirror that locally
+        DATA.forEach(function (r) {
+          if (byProvider[r.pid] && byProvider[r.pid].indexOf(r.mid) !== -1) r.disabled = !enabled;
+        });
+        refreshStats();
+        applyFilters();
+        showToast((enabled ? 'Listed ' : 'Hidden ') + totalChanged + ' model' + (totalChanged === 1 ? '' : 's'), 'success');
+      } catch (e) {
+        showToast('Bulk update failed: ' + e.message, 'error');
+        // Server state is unknown after a partial run — reload to resync
+        setTimeout(function () { location.reload(); }, 1500);
+      }
+    }
+
+    renderPage();
+    </script>
+  `;
+
+  return new Response(adminLayout("Models", "models", content), {
+    headers: { "Content-Type": "text/html; charset=UTF-8" }
+  });
+}
+
+// ─── Admin: Playground (chat against a chosen provider/model) ────────────
+
+async function renderAdminPlayground(env, url) {
+  const { results: providers } = await env.DB.prepare(
+    "SELECT id, name, slug, disabled_models, fetched_models, tokens FROM custom_providers WHERE enabled = 1 ORDER BY name"
+  ).all();
+
+  const groups = [];
+  for (const p of (providers || [])) {
+    const slug = p.slug || providerSlug(p.name);
+    const raw = JSON.parse(p.fetched_models || "[]");
+    if (!Array.isArray(raw)) continue;
+    let disabled;
+    try { disabled = new Set(JSON.parse(p.disabled_models || "[]")); } catch { disabled = new Set(); }
+    const models = [];
+    for (const m of raw) {
+      const mid = typeof m === "string" ? m : m?.id;
+      if (typeof mid !== "string" || mid.length === 0) continue;
+      models.push({ mid, hidden: disabled.has(mid) });
+    }
+    if (models.length === 0) continue;
+    groups.push({ name: p.name, slug, models });
+  }
+
+  const totalModels = groups.reduce((n, g) => n + g.models.length, 0);
+
+  // Hidden models are deliberately included: the point of a playground is to
+  // try a model before publishing it to /models. They are marked, not omitted.
+  const optionGroups = groups.map(g => `
+    <optgroup label="${escapeHtml(g.name)} (${escapeHtml(g.slug)})">
+      ${g.models.map(m => `<option value="${escapeHtml(g.slug + "/" + m.mid)}">${escapeHtml(m.mid)}${m.hidden ? ' · hidden' : ''}</option>`).join("")}
+    </optgroup>`).join("");
+
+  const content = `
+    <div class="page-header">
+      <div class="page-header-left">
+        <h2>Playground</h2>
+        <p>Send a message to any model on an enabled provider and watch the reply stream back</p>
+      </div>
+      <div class="page-header-actions">
+        <button class="btn btn-secondary btn-sm" id="clear-btn" title="Clear the conversation">Clear</button>
+      </div>
+    </div>
+
+    ${totalModels === 0 ? `
+    <div class="alert alert-blue">
+      <span>ⓘ</span>
+      <span>No models available yet. Add a provider at <a href="/admin/providers" style="color:var(--accent-blue)">Providers</a> and fetch its models first.</span>
+    </div>` : ""}
+
+    <div class="pg-grid">
+      <div class="pg-chat-card">
+        <div class="pg-toolbar">
+          <div class="form-group pg-model-group">
+            <label>Model</label>
+            <select id="pg-model" ${totalModels === 0 ? 'disabled' : ''}>
+              ${optionGroups || '<option value="">No models available</option>'}
+            </select>
+          </div>
+          <div class="pg-toolbar-right">
+            <span class="pg-meta" id="pg-meta"></span>
+            <button class="btn btn-secondary btn-sm" id="settings-toggle" title="Show or hide settings">⚙︎ Settings</button>
+          </div>
+        </div>
+
+        <div class="pg-messages" id="pg-messages">
+          <div class="pg-empty" id="pg-empty">
+            <div class="pg-empty-icon">💬</div>
+            <div>Pick a model and send your first message.</div>
+            <div class="pg-empty-hint">Switch on <strong>Stream</strong> in Settings to watch tokens arrive live.</div>
+          </div>
+        </div>
+
+        <form class="pg-composer" id="pg-form" onsubmit="sendMessage(event)">
+          <textarea id="pg-input" rows="1" placeholder="Type a message…  (Enter to send, Shift+Enter for a new line)"
+            ${totalModels === 0 ? 'disabled' : ''}></textarea>
+          <button type="submit" class="btn btn-primary" id="pg-send" ${totalModels === 0 ? 'disabled' : ''}>Send</button>
+          <button type="button" class="btn btn-danger" id="pg-stop" style="display:none" onclick="stopMessage()">Stop</button>
+        </form>
+      </div>
+
+      <aside class="pg-settings" id="pg-settings">
+        <h3>⚙︎ Settings</h3>
+        <div class="pg-settings-body">
+          <div class="form-group">
+            <label>System prompt</label>
+            <textarea id="s-system" rows="3" placeholder="Optional — prepended to every request"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Temperature <span class="pg-val" id="v-temp">0.7</span></label>
+            <input type="range" id="s-temp" min="0" max="2" step="0.1" value="0.7" oninput="document.getElementById('v-temp').textContent=this.value">
+          </div>
+          <div class="form-group">
+            <label>Max tokens</label>
+            <input type="number" id="s-maxtok" min="1" max="32000" value="1024">
+          </div>
+          <div class="form-group">
+            <label>Top P</label>
+            <input type="number" id="s-topp" min="0.01" max="1" step="0.01" value="1">
+          </div>
+          <label class="pg-check">
+            <input type="checkbox" id="s-stream" checked>
+            <span>Stream response</span>
+          </label>
+          <div class="pg-note">
+            These settings apply to the next message you send. Numeric values are clamped server-side.
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <style>
+      .pg-grid{display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start}
+      .pg-chat-card{background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius);display:flex;flex-direction:column;height:calc(100vh - 220px);min-height:420px;overflow:hidden}
+      .pg-toolbar{display:flex;align-items:flex-end;gap:12px;padding:16px;border-bottom:1px solid var(--border-subtle);flex-wrap:wrap}
+      .pg-model-group{flex:1;min-width:200px}
+      .pg-toolbar-right{display:flex;align-items:center;gap:10px}
+      .pg-meta{font-size:11px;color:var(--text-muted);font-family:'SF Mono',Consolas,monospace;white-space:nowrap}
+      .pg-messages{flex:1;min-height:0;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
+      .pg-empty{margin:auto;text-align:center;color:var(--text-muted);font-size:13px;line-height:1.8}
+      .pg-empty-icon{font-size:32px;margin-bottom:8px;opacity:0.5}
+      .pg-empty-hint{font-size:12px;margin-top:6px}
+      .pg-msg{max-width:85%;padding:12px 16px;border-radius:14px;font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
+      .pg-msg.user{align-self:flex-end;background:linear-gradient(135deg,rgba(59,130,246,0.18),rgba(139,92,246,0.18));border:1px solid rgba(59,130,246,0.25);color:var(--text-primary)}
+      .pg-msg.assistant{align-self:flex-start;background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);color:var(--text-primary)}
+      .pg-msg.error{align-self:flex-start;background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.2);color:var(--accent-rose);font-size:12px}
+      .pg-msg-meta{font-size:10px;color:var(--text-muted);margin-top:8px;font-family:'SF Mono',Consolas,monospace}
+      .pg-caret{display:inline-block;width:7px;height:14px;background:var(--accent-blue);vertical-align:text-bottom;animation:pg-blink 1s steps(2,start) infinite}
+      @keyframes pg-blink{to{visibility:hidden}}
+      .pg-composer{display:flex;gap:10px;padding:16px;border-top:1px solid var(--border-subtle);align-items:flex-end}
+      .pg-composer textarea{flex:1;padding:11px 14px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:10px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;resize:none;max-height:160px;line-height:1.5;transition:var(--transition)}
+      .pg-composer textarea:focus{border-color:var(--border-active);box-shadow:0 0 0 3px rgba(59,130,246,0.08)}
+      .pg-composer textarea::placeholder{color:var(--text-muted)}
+      .pg-settings{background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:20px;position:sticky;top:20px}
+      .pg-settings h3{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:16px}
+      .pg-settings-body{display:flex;flex-direction:column;gap:16px}
+      .pg-settings input[type=range]{width:100%;accent-color:var(--accent-blue);cursor:pointer}
+      .pg-val{color:var(--accent-blue);font-family:'SF Mono',Consolas,monospace;text-transform:none;letter-spacing:0}
+      .pg-check{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--text-secondary);cursor:pointer}
+      .pg-check input{accent-color:var(--accent-green);width:15px;height:15px;cursor:pointer}
+      .pg-note{font-size:11px;color:var(--text-muted);line-height:1.6;padding-top:4px;border-top:1px solid var(--border-subtle)}
+      .pg-settings.collapsed .pg-settings-body{display:none}
+      @media(max-width:768px){
+        .pg-grid{grid-template-columns:1fr;gap:14px}
+        .pg-chat-card{height:auto;min-height:0}
+        .pg-messages{height:52vh;min-height:220px}
+        .pg-settings{position:static}
+        .pg-msg{max-width:92%}
+      }
+    </style>
+
+    <script>
+    // NB: not named "history" — that collides with the read-only window.history,
+    // so history.push() throws and every send silently dies.
+    var convo = [];   // [{role, content}] — the conversation we resend each turn
+    var controller = null;
+
+    function showToast(message, type) {
+      var existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+      var t = document.createElement('div');
+      t.className = 'toast';
+      var ok = type !== 'error';
+      t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:500;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:600;backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.4);' +
+        (ok ? 'background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3)'
+            : 'background:rgba(244,63,94,0.15);color:#f43f5e;border:1px solid rgba(244,63,94,0.3)');
+      t.textContent = message;
+      document.body.appendChild(t);
+      setTimeout(function () { t.remove(); }, 2500);
+    }
+
+    document.getElementById('settings-toggle').addEventListener('click', function () {
+      document.getElementById('pg-settings').classList.toggle('collapsed');
+    });
+
+    document.getElementById('clear-btn').addEventListener('click', function () {
+      convo = [];
+      document.getElementById('pg-messages').innerHTML = '';
+      var msgs = document.getElementById('pg-messages');
+      var empty = document.createElement('div');
+      empty.className = 'pg-empty';
+      empty.id = 'pg-empty';
+      var icon = document.createElement('div'); icon.className = 'pg-empty-icon'; icon.textContent = '💬';
+      var line1 = document.createElement('div'); line1.textContent = 'Pick a model and send your first message.';
+      var line2 = document.createElement('div'); line2.className = 'pg-empty-hint';
+      line2.textContent = 'Switch on Stream in Settings to watch tokens arrive live.';
+      empty.appendChild(icon); empty.appendChild(line1); empty.appendChild(line2);
+      msgs.appendChild(empty);
+    });
+
+    // Auto-grow the textarea, capped by the CSS max-height
+    var input = document.getElementById('pg-input');
+    input.addEventListener('input', function () {
+      this.style.height = 'auto';
+      this.style.height = Math.min(160, this.scrollHeight) + 'px';
+    });
+    // Enter sends, Shift+Enter inserts a newline
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.form.requestSubmit(); }
+    });
+
+    function clearEmptyState() {
+      var empty = document.getElementById('pg-empty');
+      if (empty) empty.remove();
+    }
+
+    // All model output goes through textContent — no innerHTML, no markdown
+    // parser, so a reply can never inject markup into the admin page.
+    function addMessage(role, text, meta) {
+      clearEmptyState();
+      var wrap = document.createElement('div');
+      wrap.className = 'pg-msg ' + role;
+      var body = document.createElement('div');
+      body.textContent = text;
+      wrap.appendChild(body);
+      var metaEl = null;
+      if (meta !== undefined) {
+        metaEl = document.createElement('div');
+        metaEl.className = 'pg-msg-meta';
+        metaEl.textContent = meta || '';
+        wrap.appendChild(metaEl);
+      }
+      document.getElementById('pg-messages').appendChild(wrap);
+      scrollToBottom();
+      return { wrap: wrap, body: body, meta: metaEl };
+    }
+
+    function scrollToBottom() {
+      var box = document.getElementById('pg-messages');
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function setBusy(busy) {
+      document.getElementById('pg-send').style.display = busy ? 'none' : '';
+      document.getElementById('pg-stop').style.display = busy ? '' : 'none';
+      document.getElementById('pg-model').disabled = busy;
+    }
+
+    function stopMessage() {
+      if (controller) controller.abort();
+    }
+
+    function readSettings() {
+      var topp = parseFloat(document.getElementById('s-topp').value);
+      return {
+        system: document.getElementById('s-system').value,
+        temperature: parseFloat(document.getElementById('s-temp').value),
+        max_tokens: parseInt(document.getElementById('s-maxtok').value, 10),
+        top_p: isNaN(topp) ? 1 : topp,
+        stream: document.getElementById('s-stream').checked
+      };
+    }
+
+    async function sendMessage(event) {
+      if (event) event.preventDefault();
+      var box = document.getElementById('pg-input');
+      var text = box.value.trim();
+      var model = document.getElementById('pg-model').value;
+      if (!text || !model) return;
+
+      box.value = '';
+      box.style.height = 'auto';
+      addMessage('user', text);
+      convo.push({ role: 'user', content: text });
+
+      var s = readSettings();
+      var started = Date.now();
+      var reply = addMessage('assistant', '', '');
+      var caret = document.createElement('span');
+      caret.className = 'pg-caret';
+      reply.body.appendChild(caret);
+
+      setBusy(true);
+      controller = new AbortController();
+
+      try {
+        var res = await fetch('/admin/playground/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: model,
+            messages: convo,
+            system: s.system,
+            temperature: s.temperature,
+            max_tokens: s.max_tokens,
+            top_p: s.top_p,
+            stream: s.stream
+          })
+        });
+
+        if (s.stream && res.ok && res.body) {
+          await consumeStream(res, reply, caret, started);
+        } else {
+          var data = await res.json().catch(function () { return null; });
+          caret.remove();
+          if (!data || !data.ok) {
+            var msg = (data && data.error) || ('HTTP ' + res.status);
+            reply.wrap.className = 'pg-msg error';
+            reply.body.textContent = msg;
+            reply.meta.textContent = '';
+            convo.pop(); // the turn never completed — don't resend it
+            showToast('Request failed', 'error');
+            return;
+          }
+          reply.body.textContent = data.reply || '(empty reply)';
+          reply.meta.textContent = describeUsage(data.usage, Date.now() - started, data.provider);
+          convo.push({ role: 'assistant', content: data.reply || '' });
+        }
+      } catch (e) {
+        caret.remove();
+        if (e.name === 'AbortError') {
+          // Keep whatever streamed in before Stop was pressed
+          reply.meta.textContent = (reply.meta.textContent ? reply.meta.textContent + ' · ' : '') + 'stopped';
+          if (reply.body.textContent) convo.push({ role: 'assistant', content: reply.body.textContent });
+        } else {
+          reply.wrap.className = 'pg-msg error';
+          reply.body.textContent = e.message || 'Request failed';
+          convo.pop();
+        }
+      } finally {
+        controller = null;
+        setBusy(false);
+        scrollToBottom();
+      }
+    }
+
+    async function consumeStream(res, reply, caret, started) {
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+      var accumulated = '';
+      var usage = null;
+      var provider = '';
+
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+
+        // Parse line by line and keep the trailing partial line. This handles
+        // both \\n and \\r\\n framing without needing to split whole SSE events.
+        var lines = buffer.split('\\n');
+        buffer = lines.pop();
+
+        for (var j = 0; j < lines.length; j++) {
+          var line = lines[j].replace(/\\r$/, '').trim();
+          if (line.indexOf('data:') !== 0) continue;
+          var payload = line.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          var json;
+          try { json = JSON.parse(payload); } catch (e) { continue; }
+
+          if (json.usage) usage = json.usage;
+          if (json.provider) provider = json.provider;
+          // Some proxies wrap the chunk — unwrap a single-element array too
+          var choice = Array.isArray(json) ? json[0] && json[0].choices && json[0].choices[0]
+                                            : json.choices && json.choices[0];
+          if (!choice) continue;
+          var delta = choice.delta ? choice.delta.content : null;
+          if (typeof delta === 'string' && delta.length > 0) {
+            accumulated += delta;
+            reply.body.textContent = accumulated; // textContent, never innerHTML
+            scrollToBottom();
+          }
+        }
+      }
+
+      caret.remove();
+      if (!accumulated) {
+        reply.body.textContent = '(empty reply)';
+      }
+      reply.meta.textContent = describeUsage(usage, Date.now() - started, provider, accumulated);
+      convo.push({ role: 'assistant', content: accumulated });
+    }
+
+    function describeUsage(usage, elapsed, provider, text) {
+      var parts = [];
+      if (provider) parts.push(provider);
+      if (usage && usage.total_tokens) parts.push(usage.total_tokens + ' tokens');
+      else if (usage && usage.completion_tokens) parts.push(usage.completion_tokens + ' tokens');
+      else if (text) parts.push('~' + Math.ceil(text.length / 4) + ' tokens (est.)');
+      parts.push(elapsed + ' ms');
+      return parts.join(' · ');
     }
     </script>
   `;
 
-  return new Response(adminLayout("Model Aliases", "aliases", content), {
+  return new Response(adminLayout("Playground", "playground", content), {
     headers: { "Content-Type": "text/html; charset=UTF-8" }
   });
 }
@@ -3665,9 +4811,6 @@ anthropic/claude-3.5-sonnet
 google/gemini-2.0-flash
 my-provider/llama-3-8b</code></pre>
     </div>
-    <div class="info-card">
-      <p>Use <a href="/admin/aliases" style="color:var(--accent)">Model Aliases</a> to create short names like <code>gpt-4o</code> that map to full model IDs.</p>
-    </div>
   </div>
 
   <!-- Streaming -->
@@ -3807,6 +4950,8 @@ async function renderProviderDetail(id, env, url) {
   const p = customProviders[0];
   const tokens = parseTokens(p.tokens);
   const models = JSON.parse(p.fetched_models || "[]");
+  let disabledModels;
+  try { disabledModels = new Set(JSON.parse(p.disabled_models || "[]")); } catch { disabledModels = new Set(); }
   const enabledCount = tokens.filter(t => t.enabled).length;
   const totalCount = tokens.length;
 
@@ -3846,22 +4991,41 @@ async function renderProviderDetail(id, env, url) {
         const capBadges = [];
         if (caps.reasoning) capBadges.push('<span class="badge badge-purple" style="font-size:10px">🧠 Reasoning</span>');
         if (caps.vision) capBadges.push('<span class="badge badge-cyan" style="font-size:10px">👁️ Vision</span>');
-        return `<div class="model-row" id="model-row-${idx}" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);transition:var(--transition)">
+        const isHidden = disabledModels.has(rawId);
+        return `<div class="model-row" id="model-row-${idx}" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);transition:var(--transition)${isHidden ? ';opacity:0.55' : ''}">
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600;color:var(--text-primary);font-family:'SF Mono',Consolas,monospace;margin-bottom:4px;word-break:break-all">${fullId}</div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               ${contextWindow ? `<span class="badge badge-slate" style="font-size:10px">${(contextWindow/1000).toFixed(0)}k ctx</span>` : ''}
               ${capBadges.join('')}
+              <span id="hidden-badge-${idx}" class="badge badge-amber" style="font-size:10px;${isHidden ? '' : 'display:none'}">Hidden from /models</span>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
             <span id="model-status-${idx}" style="font-size:14px;width:20px;text-align:center"></span>
+            <label class="toggle toggle-sm" title="${isHidden ? 'Hidden from /models — click to show' : 'Visible at /models — click to hide'}">
+              <input type="checkbox" data-idx="${idx}" ${isHidden ? '' : 'checked'} onchange='toggleModelVisibility(${p.id}, ${JSON.stringify(rawId)}, this)'>
+              <span class="slider"></span>
+            </label>
             <button type="button" class="btn-icon" onclick="copyModelId('${fullId}', this)" title="Copy model ID">📋</button>
             <button type="button" class="btn-icon fetch" onclick="testSingleModel(${p.id}, '${rawId}', ${idx})" title="Test model" id="test-btn-${idx}">▶</button>
           </div>
         </div>`;
       }).join("")
     : '<span style="color:var(--text-muted);font-size:12px;padding:12px 0;display:block;grid-column:1/-1">No models fetched yet. Click "Fetch Models" to discover available models.</span>';
+
+  // The model auto-fetch that runs right after a provider is added can fail
+  // (bad key, quota, region block, ...). Surface the provider's own message.
+  const modelsError = url?.searchParams?.get("models_error") || "";
+  const modelsErrorBanner = modelsError ? `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:14px 18px;border-radius:12px;background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.3);margin-bottom:20px">
+      <span style="font-size:16px;line-height:1.2">⚠️</span>
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--accent-rose);margin-bottom:4px">Could not fetch models from this provider</div>
+        <div style="font-size:12px;color:var(--text-secondary);font-family:'SF Mono',Consolas,monospace;word-break:break-word">${escapeHtml(modelsError)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">The provider was saved. Fix the cause above, then use ↻ Fetch Models to retry.</div>
+      </div>
+    </div>` : "";
 
   const content = `
     <div class="page-header">
@@ -3889,6 +5053,8 @@ async function renderProviderDetail(id, env, url) {
         </form>
       </div>
     </div>
+
+    ${modelsErrorBanner}
 
     <!-- Stats -->
     <div class="stat-grid">
@@ -4101,6 +5267,42 @@ async function renderProviderDetail(id, env, url) {
     function openAddTokenModal(providerId) {
       document.getElementById('at-provider-id').value = providerId;
       document.getElementById('addTokenModal').classList.add('show');
+    }
+
+    // ── Model visibility (hide/show at /models) ──
+    // Hides the model from the public /models listing only. Direct calls to the
+    // model ID keep routing exactly as before.
+    async function toggleModelVisibility(providerId, modelId, checkbox) {
+      const wanted = checkbox.checked;
+      const status = document.getElementById('model-status-' + checkbox.dataset.idx);
+      const row = document.getElementById('model-row-' + checkbox.dataset.idx);
+      const badge = document.getElementById('hidden-badge-' + checkbox.dataset.idx);
+      checkbox.disabled = true;
+      if (status) status.textContent = '⏳';
+      try {
+        const res = await fetch('/admin/models/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider_id: providerId, model_id: modelId, enabled: wanted })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+        const hidden = data.disabled === true;
+        // Server is the source of truth — reflect what it actually stored
+        checkbox.checked = !hidden;
+        if (row) row.style.opacity = hidden ? '0.55' : '1';
+        if (badge) badge.style.display = hidden ? '' : 'none';
+        const label = checkbox.closest('label');
+        if (label) label.title = hidden ? 'Hidden from /models — click to show' : 'Visible at /models — click to hide';
+        if (status) status.textContent = hidden ? '🙈' : '👁️';
+        showToast(hidden ? 'Hidden from /models' : 'Visible at /models', 'success');
+      } catch (e) {
+        checkbox.checked = !wanted; // revert the optimistic flip
+        if (status) status.textContent = '⚠️';
+        showToast('Failed: ' + e.message, 'error');
+      } finally {
+        checkbox.disabled = false;
+      }
     }
 
     // ── Copy Model ID ──
