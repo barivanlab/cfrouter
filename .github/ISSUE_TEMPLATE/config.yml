@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Q&A / usage help
+    url: https://github.com/barivanlab/cfrouter/discussions
+    about: Ask how to configure a provider, agent, or deployment.
+  - name: 🔒 Report a security issue privately
+    url: https://github.com/barivanlab/cfrouter/security/advisories/new
+    about: Do not open public issues for vulnerabilities — see SECURITY.md.

@@ -11,6 +11,9 @@ package-lock.json
 .env.local
 .env.*.local
 
+# Local experiments (not part of the repo)
+sample/
+
 # IDE
 .vscode/
 .idea/

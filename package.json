@@ -30,13 +30,13 @@
   ],
   "author": "Barivan",
   "license": "MIT",
-  "homepage": "https://github.com/barivan/cfrouter#readme",
+  "homepage": "https://github.com/barivanlab/cfrouter#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/barivan/cfrouter"
+    "url": "https://github.com/barivanlab/cfrouter"
   },
   "bugs": {
-    "url": "https://github.com/barivan/cfrouter/issues"
+    "url": "https://github.com/barivanlab/cfrouter/issues"
   },
   "devDependencies": {
     "wrangler": "^3.0.0"

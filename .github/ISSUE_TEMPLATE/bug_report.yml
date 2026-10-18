@@ -1,0 +1,48 @@
+name: 🐛 Bug report
+description: Report a reproducible problem
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please fill in the details so we can reproduce it.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, and what went wrong?
+      placeholder: Streaming via /v1/messages stops after the first chunk…
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal curl or client config that triggers it.
+      placeholder: |
+        ```bash
+        curl -N -X POST https://…/v1/chat/completions \
+          -H "Authorization: Bearer sk-…" \
+          -d '{"model":"openai/gpt-4o","stream":true,…}'
+        ```
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Which commit is deployed? (`git rev-parse --short HEAD`)
+      placeholder: b2a1842
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: wrangler version, local vs deployed, provider + model slug
+      placeholder: wrangler 3.x, deployed, anthropic/claude-sonnet-4-20250514
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      description: Paste relevant `wrangler tail` output or error body.
+      render: text

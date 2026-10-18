@@ -1,0 +1,42 @@
+name: 💡 Feature request
+description: Suggest an idea for CFRouter
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Tell us what problem it solves.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today?
+      placeholder: I can't cap per-token spend…
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it work? API shape, dashboard UI, config…
+      placeholder: A per-token monthly token budget enforced at proxy time…
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways to solve it, and why they fall short.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Proxy / routing
+        - Anthropic dialect
+        - Gemini dialect
+        - Admin dashboard
+        - Analytics / D1
+        - Docs
+        - Other
