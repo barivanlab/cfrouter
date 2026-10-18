@@ -16,6 +16,7 @@
 | [آموزش نصب از پنل Cloudflare](#🖥️-نصب-از-طریق-پنل-cloudflare-بدون-نیاز-به-خط-فرمان) | برای کسانی که فقط از مرورگر استفاده می‌کنند |
 | [امکانات](#✨-امکانات) | لیست امکانات پروژه |
 | [مرجع API](#📖-مرجع-api) | مستندات endpointها |
+| [اتصال ایجنت‌های کدنویسی](#اتصال-ایجنتهای-کدنویسی) | راه‌اندازی Claude Code، Cline، Continue |
 | [پیکربندی](#🔧-پیکربندی) | تنظیمات پیشرفته |
 | [عیب‌یابی](#🐛-عیب‌یابی) | حل مشکلات رایج |
 
@@ -342,6 +343,8 @@ curl -X POST https://cfrouter.your-subdomain.workers.dev/v1/chat/completions \
 | امکان | توضیحات |
 |-------|---------|
 | **API سازگار با OpenAI** | جایگزین مستقیم API اپن‌ای‌آی — با هر کلاینتی که پروتکل `/v1/chat/completions` را بشناسد کار می‌کند |
+| **فراخوانی ابزار (Tool Calling)** | پشتیبانی کامل از tool/function calling روی هر سه فرمت، استریم و غیراستریم — همان چیزی که ایجنت‌های کدنویسی لازم دارند |
+| **آماده برای Claude Code** | Anthropic Messages API به‌صورت بومی در `/v1/messages`، همراه با `/v1/messages/count_tokens` و احراز هویت `x-api-key` |
 | **بارگذاری متعادل چند ارائه‌دهنده** | مسیریابی Round-Robin بین ارائه‌دهندگان مختلف AI |
 | **پنل مدیریت** | رابط وب داخلی برای مدیریت ارائه‌دهندگان، کلیدها و آمار |
 | **Playground** | گفت‌وگو با هر مدل از ارائه‌دهنده‌های فعال، مستقیماً از پنل — با streaming، system prompt، temperature، `max_tokens` و `top_p` |
@@ -349,8 +352,8 @@ curl -X POST https://cfrouter.your-subdomain.workers.dev/v1/chat/completions \
 | **ردیابی مصرف** | آمار مصرف توکن به ازای هر کلید و مدل |
 | **پشتیبانی از Streaming** | پشتیبانی کامل از SSE با تبدیل شفاف پاسخ‌ها |
 | **پایش سلامت** | وضعیت لحظه‌ای ارائه‌دهندگان و در دسترس بودن endpointها |
-| **بازیابی خودکار** | endpointهایی که موقتاً غیرفعال شده‌اند خودکار فعال می‌شوند |
-| **پشتیبانی CORS** | آماده برای اپلیکیشن‌های مبتنی بر مرورگر |
+| **جایگزینی خودکار (Failover)** | ارائه‌دهنده‌ای که 401/403/429/5xx برگرداند رد می‌شود و درخواست روی ارائه‌دهنده سالم بعدی دوباره امتحان می‌شود |
+| **پشتیبانی CORS** | آماده برای اپلیکیشن‌های مبتنی بر مرورگر — هدرهای اختصاصی Anthropic و OpenAI مجاز هستند |
 | **استقرار بدون تنظیم** | یک فایل، یک دستور `wrangler deploy` |
 | **دیتابیس D1** | ذخیره‌سازی پایدار روی لبه Cloudflare — بدون نیاز به دیتابیس خارجی |
 
@@ -366,11 +369,20 @@ https://cfrouter.your-subdomain.workers.dev
 
 ### احراز هویت
 
-کلید API را در هدر `Authorization` قرار دهید:
+کلید API را در هدری که کلاینتتان استفاده می‌کند قرار دهید. هر سه حالت پذیرفته می‌شود:
+
+| هدر | استفاده‌کننده |
+|-----|----------------|
+| `Authorization: Bearer YOUR_API_KEY` | OpenAI SDK، Cline، Continue و اکثر ابزارها |
+| `x-api-key: YOUR_API_KEY` | Anthropic SDK و Claude Code |
+| `x-goog-api-key` یا `?key=` | Gemini SDK |
 
 ```
 Authorization: Bearer YOUR_API_KEY
+x-api-key: YOUR_API_KEY
 ```
+
+کلید باید با `sk-` شروع شود — از بخش **Tokens** در پنل مدیریت بسازید.
 
 ### endpointها
 
@@ -378,8 +390,10 @@ Authorization: Bearer YOUR_API_KEY
 |-----|------|---------|
 | `GET` | `/v1/models` | لیست تمام مدل‌های موجود |
 | `POST` | `/v1/chat/completions` | ایجاد chat completion (فرمت OpenAI) |
-| `POST` | `/v1/messages` | ایجاد chat completion (فرمت Anthropic) |
+| `POST` | `/v1/messages` | Anthropic Messages API — برای Claude Code و Anthropic SDK |
+| `POST` | `/v1/messages/count_tokens` | شمارش توکن‌های یک درخواست (محلی پاسخ داده می‌شود) |
 | `POST` | `/v1beta/models/{model}:generateContent` | ایجاد chat completion (فرمت Gemini) |
+| `POST` | `/v1beta/models/{model}:streamGenerateContent` | همان، به‌صورت استریم |
 | `POST` | `/v1/embeddings` | ایجاد embeddings |
 | `GET` | `/v1/health` | بررسی سلامت عمومی |
 | `GET` | `/docs` | مستندات API |
@@ -411,14 +425,92 @@ anthropic/claude-3.5-sonnet
 my-provider/llama-3-8b
 ```
 
+`slug` همان **slug** ارائه‌دهنده در پنل مدیریت است (به‌طور پیش‌فرض از نام ارائه‌دهنده ساخته می‌شود: حروف کوچک با خط تیره). بخش بعد از اسلش دست‌نخورده به ارائه‌دهنده فرستاده می‌شود، پس خودش می‌تواند اسلش داشته باشد:
+
+```
+openrouter/meta-llama/llama-3.1-70b-instruct
+```
+
+اگر slug با هیچ ارائه‌دهنده‌ای مطابقت نداشته باشد، پاسخ `404` برمی‌گردد و در متن خطا لیست slugهای معتبر می‌آید — به‌جای یک خطای مبهم از سمت ارائه‌دهنده.
+
 ### نکات مهم
 
-#### اتصال به VSCode / Cline / Continue
+### اتصال ایجنت‌های کدنویسی
 
-آدرس گیت‌وی و توکن API را در تنظیمات افزونه وارد کنید:
+به‌جای اتصال مستقیم به ارائه‌دهنده، ایجنت را به گیتوی وصل کنید. سه چیز لازم دارید که
+هر سه از پنل مدیریت گرفته می‌شود:
 
-- **Base URL**: `https://cfrouter.your-subdomain.workers.dev/v1`
-- **API Key**: توکنی که ساختید
+1. **Base URL** — `https://cfrouter.your-subdomain.workers.dev/v1`
+2. **API Key** — از بخش **Tokens** بسازید (با `sk-` شروع می‌شود)
+3. **مدل** — به فرمت `slug/model`، مثلاً `openai/gpt-4o`
+
+هر درخواست به همان ارائه‌دهنده‌ای که نامش را نوشتید مسیریابی می‌شود. اگر ارائه‌دهنده
+از کار افتاده باشد یا کلیدش رد شود، گیتوی درخواست را روی ارائه‌دهنده سالم بعدی دوباره
+امتحان می‌کند و بعد جواب می‌دهد.
+
+#### Claude Code
+
+Claude Code با Anthropic Messages API حرف می‌زند و گیتوی همین را به‌صورت بومی در
+`/v1/messages` سرو می‌کند — همراه با فراخوانی ابزار. این متغیرهای محیطی را تنظیم کنید:
+
+```bash
+export ANTHROPIC_BASE_URL="https://cfrouter.your-subdomain.workers.dev"
+export ANTHROPIC_API_KEY="sk-your-gateway-token"
+export ANTHROPIC_MODEL="anthropic/claude-sonnet-4"
+```
+
+به `ANTHROPIC_BASE_URL` پسوند `/v1` اضافه نکنید — خود Claude Code مسیر
+`/v1/messages` را اضافه می‌کند. بعد در پوشه پروژه `claude` را اجرا کنید و از آن
+بخواهید یک فایل را بخواند؛ اگر محتوای فایل را برگرداند، فراخوانی ابزار درست کار می‌کند.
+
+> `ANTHROPIC_API_KEY` را به `ANTHROPIC_AUTH_TOKEN` ترجیح دهید. اولی کلید را در هدر
+> `x-api-key` می‌فرستد و دومی در `Authorization: Bearer` — گیتوی هر دو را قبول می‌کند،
+> ولی `x-api-key` همان هدری است که Claude Code انتظار دارد.
+
+#### Cline
+
+در تنظیمات Cline:
+
+| فیلد | مقدار |
+|------|-------|
+| **API Provider** | OpenAI Compatible |
+| **Base URL** | `https://cfrouter.your-subdomain.workers.dev/v1` |
+| **API Key** | توکن گیتوی شما (`sk-...`) |
+| **Model ID** | `slug/model`، مثلاً `openai/gpt-4o` |
+
+Cline فهرست مدل‌ها را از `GET /v1/models` می‌خواند. همه مدل‌های همه ارائه‌دهنده‌های
+فعال با فرمت `slug/model` آنجا لیست می‌شوند، پس می‌توانید از لیست انتخاب کنید یا دستی
+بنویسید. اگر مدلی در لیست نبود، در پنل مدیریت تب **Models** آن را نمایان کنید.
+
+#### Continue
+
+در فایل `~/.continue/config.json` این ورودی را زیر `models` اضافه کنید:
+
+```json
+{
+  "title": "CFRouter",
+  "provider": "openai",
+  "model": "openai/gpt-4o",
+  "apiBase": "https://cfrouter.your-subdomain.workers.dev/v1",
+  "apiKey": "sk-your-gateway-token"
+}
+```
+
+#### Cursor و OpenAI SDK
+
+هر کلاینتی که آدرس پایه OpenAI می‌گیرد کار می‌کند: Base URL را
+`https://cfrouter.<your-subdomain>.workers.dev/v1`، کلید را توکن گیتوی و مدل را
+`slug/model` بگذارید.
+
+#### عیب‌یابی
+
+| نشانه | علت | راه‌حل |
+|-------|-----|--------|
+| `401 Invalid API key` | کلید نبوده یا در هدر اشتباه فرستاده شده | مطمئن شوید کلید **گیتوی** است (با `sk-` شروع می‌شود)، نه کلید ارائه‌دهنده |
+| `404 Unknown provider slug` | slug با هیچ ارائه‌دهنده‌ای مطابقت ندارد | در متن خطا لیست slugهای معتبر می‌آید — تب **Providers** را ببینید |
+| ایجنت هنگ می‌کند و جوابی نمی‌آید | پاسخ استریم کامل نمی‌شود | Base URL ارائه‌دهنده باید به `/v1` ختم شود و توکنش معتبر باشد — با **Playground** همان ارائه‌دهنده را تست کنید |
+| لیست مدل‌ها خالی است | `/v1/models` ارائه‌دهنده از سمت Worker در دسترس نیست | فهرست از کش **Fetch Models** پر می‌شود؛ در تب Providers دوباره Fetch Models بزنید |
+| `503 No providers available` | هیچ ارائه‌دهنده فعالی نیست | در تب **Providers** یکی را فعال کنید |
 
 #### فرمت‌های مختلف API
 

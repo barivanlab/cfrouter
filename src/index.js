@@ -11,6 +11,50 @@
 // Or use the Setup Wizard at /setup on first run (dashboard users)
 const SESSION_MAX_AGE = 86400; // 24 hours in seconds
 
+// ─── CORS ────────────────────────────────────────────────────────────────
+// Gateways speak three dialects, so the preflight has to accept all three sets
+// of custom headers: OpenAI-style `Authorization`, native Anthropic (`x-api-key`,
+// `anthropic-version`, ...), Gemini's `x-goog-api-key`, and the SDK internals
+// (`x-stainless-*`).
+const CORS_ALLOW_HEADERS = [
+  "Content-Type",
+  "Authorization",
+  "x-api-key",
+  "x-goog-api-key",
+  "anthropic-version",
+  "anthropic-beta",
+  "anthropic-dangerous-direct-browser-access",
+  "x-stainless-lang",
+  "x-stainless-package-version",
+  "x-stainless-os",
+  "x-stainless-arch",
+  "x-stainless-runtime",
+  "x-stainless-runtime-version",
+  "x-stainless-retry-count",
+  "x-stainless-timeout",
+  "x-request-id"
+].join(", ");
+
+// Response headers a browser client may read back. Without this the fetch API
+// hides them and SDKs that log request ids or rate-limit headers see nothing.
+const CORS_EXPOSE_HEADERS = [
+  "request-id",
+  "x-request-id",
+  "anthropic-ratelimit-requests-limit",
+  "anthropic-ratelimit-requests-remaining",
+  "anthropic-ratelimit-requests-reset",
+  "anthropic-ratelimit-tokens-limit",
+  "anthropic-ratelimit-tokens-remaining",
+  "anthropic-ratelimit-tokens-reset",
+  "anthropic-ratelimit-input-tokens-limit",
+  "anthropic-ratelimit-input-tokens-remaining",
+  "anthropic-ratelimit-input-tokens-reset",
+  "anthropic-ratelimit-output-tokens-limit",
+  "anthropic-ratelimit-output-tokens-remaining",
+  "anthropic-ratelimit-output-tokens-reset",
+  "retry-after"
+].join(", ");
+
 // ─── Provider Catalog ──────────────────────────────────────────────────
 // Pre-built catalog of popular AI providers for quick setup.
 // Users click a provider, get auto-filled fields, paste their API key, done.
@@ -244,6 +288,35 @@ async function validateApiKey(env, key) {
   return null;
 }
 
+// Pull the caller's gateway key out of whichever header their client prefers.
+// OpenAI-style tools use `Authorization: Bearer sk-...`, but Claude Code sends
+// the native `x-api-key` header when it is configured with ANTHROPIC_API_KEY
+// (it only uses Authorization when ANTHROPIC_AUTH_TOKEN is set) — reading just
+// Authorization 401'd every such client. The scheme match is case-insensitive
+// and tolerant of stray whitespace because a literal `.replace("Bearer ", "")`
+// left "bearer  sk-..." as a garbage string that failed validation.
+//
+// Accepting a bare key with no scheme is safe: validateApiKey still requires the
+// `sk-` prefix, so anything else (Basic, a JWT, ...) degrades to a 401 rather
+// than authenticating.
+function extractApiKey(request) {
+  const auth = request.headers.get("authorization");
+  if (auth) {
+    const bearer = auth.match(/^\s*bearer\s+(.+?)\s*$/i);
+    if (bearer) return bearer[1];
+    const raw = auth.trim();
+    if (raw) return raw;
+  }
+  const viaHeader = request.headers.get("x-api-key");
+  if (viaHeader && viaHeader.trim()) return viaHeader.trim();
+  // The Google GenAI SDKs put the key in `x-goog-api-key` rather than either of
+  // the two headers above, so a Gemini client using the official SDK would 401
+  // without this.
+  const viaGoogle = request.headers.get("x-goog-api-key");
+  if (viaGoogle && viaGoogle.trim()) return viaGoogle.trim();
+  return null;
+}
+
 // ─── Database Initialization ─────────────────────────────────────────────
 // One-time init: only runs on the first request, not every request
 
@@ -310,19 +383,27 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // CORS preflight
+    // CORS preflight.
+    // The allowed-headers list has to cover the native Anthropic headers too:
+    // Claude Code and the Anthropic SDK send `x-api-key` and `anthropic-version`
+    // rather than `Authorization`, and a browser-based client that isn't allowed
+    // to send them fails the preflight before it ever reaches the handler.
     if (request.method === "OPTIONS") {
       return new Response(null, {
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
+          "Access-Control-Expose-Headers": CORS_EXPOSE_HEADERS,
           "Access-Control-Max-Age": "86400"
         }
       });
     }
 
-    const corsHeaders = { "Access-Control-Allow-Origin": "*" };
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Expose-Headers": CORS_EXPOSE_HEADERS
+    };
 
     // Initialize database (one-time, non-blocking)
     ctx.waitUntil(initDatabase(env));
@@ -446,19 +527,19 @@ export default {
       if (path === "/admin" || path === "/admin/") {
         return new Response(null, { status: 302, headers: { "Location": "/admin/analytics" } });
       }
-      if (path === "/admin/analytics") return await renderAdminAnalytics(env, url);
-      if (path === "/admin/health") return await renderAdminHealth(env);
+      if (path === "/admin/analytics") return noStore(await renderAdminAnalytics(env, url));
+      if (path === "/admin/health") return noStore(await renderAdminHealth(env));
 
       // Provider detail page: /admin/providers/:id
       const providerDetailMatch = path.match(/^\/admin\/providers\/(\d+)$/);
       if (providerDetailMatch && request.method === "GET") {
-        return await renderProviderDetail(parseInt(providerDetailMatch[1]), env, url);
+        return noStore(await renderProviderDetail(parseInt(providerDetailMatch[1]), env, url));
       }
-      if (path === "/admin/providers") return await renderAdminProviders(env);
-      if (path === "/admin/tokens") return await renderAdminTokens(env, url);
-      if (path === "/admin/docs") return await renderAdminDocs(env);
-      if (path === "/admin/models") return await renderAdminModels(env, url);
-      if (path === "/admin/playground") return await renderAdminPlayground(env, url);
+      if (path === "/admin/providers") return noStore(await renderAdminProviders(env));
+      if (path === "/admin/tokens") return noStore(await renderAdminTokens(env, url));
+      if (path === "/admin/docs") return noStore(await renderAdminDocs(env));
+      if (path === "/admin/models") return noStore(await renderAdminModels(env, url));
+      if (path === "/admin/playground") return noStore(await renderAdminPlayground(env, url));
 
       return new Response("Not Found", { status: 404 });
     }
@@ -494,6 +575,11 @@ export default {
     }
 
     // ── Anthropic Messages API ──
+    // count_tokens is answered locally (see handleCountTokens) and must be
+    // matched before the /v1/messages route below, which it prefixes.
+    if (path === "/v1/messages/count_tokens" && request.method === "POST") {
+      return await handleCountTokens(request, env, corsHeaders);
+    }
     if (path === "/v1/messages" && request.method === "POST") {
       return await handleAnthropicRequest(request, url, env, ctx, corsHeaders);
     }
@@ -521,11 +607,10 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
   }
 
   const headers = new Headers(request.headers);
-  const userToken = headers.get("Authorization")?.replace("Bearer ", "") || "anonymous";
   headers.delete("host");
 
   // ── API Key Authentication ──
-  const apiKey = headers.get("Authorization")?.replace("Bearer ", "");
+  const apiKey = extractApiKey(request);
   const apiKeyData = await validateApiKey(env, apiKey);
   if (!apiKeyData) {
     return new Response(JSON.stringify({
@@ -552,16 +637,9 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
   }
   if (!isStream && url.searchParams.get("stream") === "true") isStream = true;
 
-  // ── Auto-unblock expired servers (non-blocking, fire-and-forget) ──
-  const nowIso = new Date().toISOString();
-  ctx.waitUntil(
-    env.DB.prepare("UPDATE api_status SET is_blocked = 0, blocked_until = NULL WHERE is_blocked = 1 AND blocked_until < ?")
-      .bind(nowIso).run()
-  );
-
   // ── Fetch custom providers ──
   const { results: customProviders } = await env.DB.prepare(
-    "SELECT id, name, slug, base_url, tokens, token_selection FROM custom_providers WHERE enabled = 1"
+    "SELECT id, name, slug, base_url, tokens, token_selection, fetched_models FROM custom_providers WHERE enabled = 1"
   ).all();
 
   // ── Build target list ──
@@ -598,6 +676,21 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
 
   // General pool (round-robin) — all enabled custom providers
   if (!routedToProvider && customProviders && customProviders.length > 0) {
+    // A `slug/model` that matched no provider used to fall through to the general
+    // pool with the name unrewritten, so every provider was asked for a model
+    // literally called "nosuchslug/something" and the client got an opaque
+    // upstream error. Report which slugs exist instead. Guard against the false
+    // positive: some upstreams genuinely serve slash-containing model ids
+    // (meta-llama/Llama-3, ...), so if a provider actually advertises this exact
+    // name, broadcast as before.
+    if (modelName.includes("/") && !advertisesModel(customProviders, modelName)) {
+      return unknownModelResponse(
+        modelName.substring(0, modelName.indexOf("/")),
+        customProviders.map(cp => cp.slug || providerSlug(cp.name)),
+        "openai",
+        corsHeaders
+      );
+    }
     for (const cp of customProviders) {
       const tokens = parseTokens(cp.tokens);
       const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
@@ -618,8 +711,8 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
   let success = false;
   let usedProviderId = null;
   let usedTokenIndex = null;
+  let lastError = null;
   const needBodyRewrite = rewrittenModelName !== modelName && bodyText;
-  const upstreamModel = rewrittenModelName;
 
   for (const target of targets) {
     let targetBaseUrl = target.url;
@@ -666,18 +759,39 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
         continue;
       }
 
+      // A request-level rejection (bad model, malformed body, unknown route) will
+      // fail on every provider, so hand it straight back — retrying only adds
+      // latency and hides the real reason. Anything else (401/403 key or region
+      // blocks, 429 quota, 5xx outage) is provider-specific, so try the next one;
+      // if they all fail, the last error is what the client gets. Mirrors what
+      // fetchUpstream already does for the Anthropic and Gemini paths.
+      if (!response.ok && !PASSTHROUGH_UPSTREAM_STATUSES.includes(response.status)) {
+        const errorBody = await response.text().catch(() => "");
+        lastError = { status: response.status, body: errorBody };
+        continue;
+      }
+
       success = true;
       usedProviderId = target.providerId || null;
       usedTokenIndex = target.tokenIndex ?? null;
       break;
     } catch (e) {
+      lastError = { status: 502, body: e.name === "AbortError" ? "Upstream request timed out" : (e.message || "Upstream connection failed") };
       continue;
     }
   }
 
   if (!success || !response) {
+    // Surface the upstream's own status and message when we have them, so a
+    // provider rejection isn't reported as a generic gateway failure.
+    if (lastError?.body) {
+      return new Response(lastError.body, {
+        status: lastError.status,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
     return new Response(JSON.stringify({
-      error: { message: "Service Unavailable", type: "server_error", code: 503 }
+      error: { message: lastError ? `All providers failed: ${lastError.body}` : "Service Unavailable", type: "server_error", code: 503 }
     }), {
       status: 503,
       headers: { "Content-Type": "application/json", ...corsHeaders }
@@ -735,54 +849,77 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
             }
           }
 
+          // The body changed size, so the upstream's `content-length` (and any
+          // gzip framing) is now wrong — a client that trusts it hangs waiting
+          // for bytes that will never arrive.
+          const jsonHeaders = stripFramingHeaders(responseHeaders);
+          jsonHeaders.set("Content-Type", "application/json");
           return new Response(JSON.stringify(respJson), {
             status: response.status,
             statusText: response.statusText,
-            headers: responseHeaders
+            headers: jsonHeaders
           });
         }
       } else {
         // Streaming: TransformStream strips reasoning_content from each SSE chunk
+        const reader = createSSELineReader();
         const transform = new TransformStream({
           transform(chunk, controller) {
+            let lines;
             try {
-              const text = new TextDecoder().decode(chunk);
-              const lines = text.split("\n");
-              const out = [];
-              for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                  const data = line.slice(6);
-                  if (data === "[DONE]") {
-                    out.push(line);
-                    continue;
-                  }
-                  try {
-                    const parsed = JSON.parse(data);
-                    if (parsed.choices) {
-                      for (const choice of parsed.choices) {
-                        if (choice.delta) delete choice.delta.reasoning_content;
-                        if (choice.message) delete choice.message.reasoning_content;
-                      }
-                    }
-                    out.push("data: " + JSON.stringify(parsed));
-                  } catch (e) {
-                    out.push(line);
-                  }
-                } else {
-                  out.push(line);
-                }
-              }
-              controller.enqueue(new TextEncoder().encode(out.join("\n")));
+              lines = reader.push(chunk);
             } catch (e) {
               controller.enqueue(chunk);
+              return;
+            }
+            const out = [];
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) {
+                // Comments, `event:` lines and blank separators pass through untouched.
+                out.push(line + "\n");
+                continue;
+              }
+              const data = line.slice(6);
+              if (data.trim() === "[DONE]") {
+                out.push(line + "\n");
+                continue;
+              }
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.choices) {
+                  for (const choice of parsed.choices) {
+                    if (choice.delta) delete choice.delta.reasoning_content;
+                    if (choice.message) delete choice.message.reasoning_content;
+                  }
+                }
+                out.push("data: " + JSON.stringify(parsed) + "\n");
+              } catch (e) {
+                out.push(line + "\n");
+              }
+            }
+            if (out.length) controller.enqueue(new TextEncoder().encode(out.join("")));
+          },
+          flush(controller) {
+            // Drain the decoder and any line that never got its newline. The
+            // reader strips separators, so put the "\n" back on the way out.
+            const tail = reader.flush();
+            if (tail.length) {
+              controller.enqueue(new TextEncoder().encode(tail.join("\n") + "\n"));
             }
           }
         });
 
+        // The transform re-frames the stream, so the upstream's framing headers
+        // are stale. Say plainly that this is a live SSE stream.
+        const sseHeaders = stripFramingHeaders(responseHeaders);
+        sseHeaders.set("Content-Type", "text/event-stream; charset=utf-8");
+        sseHeaders.set("Cache-Control", "no-cache");
+        sseHeaders.set("X-Accel-Buffering", "no");
+
         const transformedResponse = new Response(response.body.pipeThrough(transform), {
           status: response.status,
           statusText: response.statusText,
-          headers: responseHeaders
+          headers: sseHeaders
         });
         if (isStream && isApiPath) {
           return captureStreamUsage(transformedResponse, apiKeyData.id.toString(), path, modelName, env, apiKeyData.id);
@@ -812,8 +949,8 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
 // ─── Anthropic Messages API Handler ─────────────────────────────────────
 
 async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
-  // API key auth
-  const apiKey = request.headers.get("Authorization")?.replace("Bearer ", "");
+  // API key auth — Claude Code sends `x-api-key`, not `Authorization`.
+  const apiKey = extractApiKey(request);
   const apiKeyData = await validateApiKey(env, apiKey);
   if (!apiKeyData) {
     return new Response(JSON.stringify({
@@ -827,7 +964,11 @@ async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
   const openaiBody = anthropicToOpenAI(body);
 
   // Resolve model and targets (reuse proxy logic)
-  const { targets, rewrittenModel } = await resolveModelAndTargets(env, openaiBody.model);
+  const { targets, rewrittenModel, unknownSlug, availableSlugs } = await resolveModelAndTargets(env, openaiBody.model);
+
+  if (unknownSlug) {
+    return unknownModelResponse(unknownSlug, availableSlugs, "anthropic", corsHeaders);
+  }
 
   if (targets.length === 0) {
     return new Response(JSON.stringify({
@@ -848,11 +989,13 @@ async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
 
   // Handle streaming
   if (body.stream) {
-    const transform = openAIStreamToAnthropic(responseModel);
-    const headers = new Headers(response.headers);
-    headers.set("Content-Type", "text/event-stream");
+    // Seed the client's context counter from the request we already have, so
+    // Claude Code's context gauge reads realistically on the first turn.
+    const transform = openAIStreamToAnthropic(responseModel, estimateTokens(anthropicRequestText(body)));
+    const headers = stripFramingHeaders(new Headers(response.headers));
+    headers.set("Content-Type", "text/event-stream; charset=utf-8");
     headers.set("Cache-Control", "no-cache");
-    headers.set("Connection", "keep-alive");
+    headers.set("X-Accel-Buffering", "no");
     headers.set("Access-Control-Allow-Origin", "*");
     if (usedTarget?.providerId != null && usedTarget?.tokenIndex != null) {
       ctx.waitUntil(trackTokenUsage(usedTarget.providerId, usedTarget.tokenIndex, env));
@@ -875,7 +1018,7 @@ async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
 
 async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, isStream) {
   // API key auth
-  const apiKey = request.headers.get("Authorization")?.replace("Bearer ", "");
+  const apiKey = extractApiKey(request);
   const apiKeyData = await validateApiKey(env, apiKey);
   if (!apiKeyData) {
     return new Response(JSON.stringify({
@@ -889,7 +1032,11 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
   const openaiBody = geminiToOpenAI({ ...body, model });
 
   // Resolve model and targets
-  const { targets, rewrittenModel } = await resolveModelAndTargets(env, openaiBody.model);
+  const { targets, rewrittenModel, unknownSlug, availableSlugs } = await resolveModelAndTargets(env, openaiBody.model);
+
+  if (unknownSlug) {
+    return unknownModelResponse(unknownSlug, availableSlugs, "gemini", corsHeaders);
+  }
 
   if (targets.length === 0) {
     return new Response(JSON.stringify({
@@ -912,8 +1059,10 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
   // Handle streaming
   if (isStream) {
     const transform = openAIStreamToGemini();
-    const headers = new Headers(response.headers);
+    const headers = stripFramingHeaders(new Headers(response.headers));
     headers.set("Content-Type", "application/json");
+    headers.set("Cache-Control", "no-cache");
+    headers.set("X-Accel-Buffering", "no");
     headers.set("Access-Control-Allow-Origin", "*");
     if (usedTarget?.providerId != null && usedTarget?.tokenIndex != null) {
       ctx.waitUntil(trackTokenUsage(usedTarget.providerId, usedTarget.tokenIndex, env));
@@ -936,10 +1085,11 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
 
 async function resolveModelAndTargets(env, modelName) {
   let rewrittenModel = modelName;
+  let unknownSlug = null;
 
   // Fetch custom providers
   const { results: customProviders } = await env.DB.prepare(
-    "SELECT id, name, base_url, tokens, slug, token_selection FROM custom_providers WHERE enabled = 1"
+    "SELECT id, name, base_url, tokens, slug, token_selection, fetched_models FROM custom_providers WHERE enabled = 1"
   ).all();
 
   let targets = [];
@@ -950,8 +1100,10 @@ async function resolveModelAndTargets(env, modelName) {
     const slug = rewrittenModel.substring(0, slashIndex);
     const actualModel = rewrittenModel.substring(slashIndex + 1);
 
+    let matched = false;
     for (const cp of customProviders) {
       if ((cp.slug || providerSlug(cp.name)) === slug) {
+        matched = true;
         const tokens = parseTokens(cp.tokens);
         const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
         if (selectedToken) {
@@ -966,10 +1118,14 @@ async function resolveModelAndTargets(env, modelName) {
         }
       }
     }
+    // Same rule as proxyRequest: a slug that matches nothing is a client mistake,
+    // not something to broadcast to every provider. The guard keeps genuinely
+    // slash-containing upstream model ids working.
+    if (!matched && !advertisesModel(customProviders, modelName)) unknownSlug = slug;
   }
 
   // General pool fallback
-  if (targets.length === 0 && customProviders.length > 0) {
+  if (targets.length === 0 && customProviders.length > 0 && !unknownSlug) {
     for (const cp of customProviders) {
       const tokens = parseTokens(cp.tokens);
       const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
@@ -984,7 +1140,45 @@ async function resolveModelAndTargets(env, modelName) {
     }
   }
 
-  return { targets, rewrittenModel };
+  return { targets, rewrittenModel, unknownSlug, availableSlugs: customProviders.map(cp => cp.slug || providerSlug(cp.name)) };
+}
+
+// Does any enabled provider actually advertise this exact model id? Some
+// upstreams serve ids that contain a slash, which would otherwise be mistaken
+// for one of our `provider-slug/model` references.
+function advertisesModel(customProviders, modelName) {
+  for (const cp of customProviders) {
+    try {
+      const models = JSON.parse(cp.fetched_models || "[]");
+      if (Array.isArray(models) && models.some(m => (m?.id || m) === modelName)) return true;
+    } catch (e) { /* unparseable cache — treat as no match */ }
+  }
+  return false;
+}
+
+// `fetched_models` holds either bare id strings (written when a provider was
+// seeded by hand or by an older version) or full model objects. /models used to
+// assume objects and silently skip every entry when it got strings, so a
+// provider whose /v1/models endpoint is unreachable from the Worker — cached,
+// strings — advertised nothing and Cline's model dropdown came up empty.
+function parseCachedModels(fetchedModels) {
+  let models;
+  try {
+    models = JSON.parse(fetchedModels || "[]");
+  } catch (e) {
+    return [];
+  }
+  if (!Array.isArray(models)) return [];
+  return models.map(m => {
+    if (typeof m === "string") return { id: m, name: m, context_window: null, capabilities: {}, created: null };
+    return {
+      id: m?.id || m?.name || "",
+      name: m?.name || m?.id || "",
+      context_window: m?.context_window || m?.context_length || null,
+      capabilities: m?.capabilities || {},
+      created: m?.created || null
+    };
+  });
 }
 
 // Pull a human-readable reason out of an upstream error body, so a provider
@@ -1058,6 +1252,34 @@ async function fetchUpstream(targets, openaiBody, method) {
 // provider rejection isn't mistaken for a problem with the gateway API key.
 const UPSTREAM_PASSTHROUGH_STATUSES = [400, 404, 429];
 
+// Statuses that mean the request itself is wrong, so every provider would reject
+// it identically and retrying is pointless. 401/403/429/5xx are deliberately
+// absent: those vary per provider (key, region, quota, outage) and are worth
+// retrying against the next target.
+const PASSTHROUGH_UPSTREAM_STATUSES = [400, 404, 422];
+
+// A `slug/model` whose slug matches no configured provider is almost always a
+// typo or a stale client config. Answer with the list of slugs that do exist
+// instead of forwarding the name upstream, where every provider rejects a model
+// that literally does not exist and the client sees an opaque error.
+function unknownModelResponse(slug, availableSlugs, format, corsHeaders) {
+  const available = availableSlugs && availableSlugs.length
+    ? availableSlugs.join(", ")
+    : "none configured";
+  const message = `Unknown provider slug '${slug}'. Available: ${available}`;
+
+  const body = format === "gemini"
+    ? { error: { code: 404, message, status: "NOT_FOUND" } }
+    : format === "anthropic"
+      ? { type: "error", error: { type: "invalid_request_error", message } }
+      : { error: { message, type: "invalid_request_error", code: "model_not_found" } };
+
+  return new Response(JSON.stringify(body), {
+    status: 404,
+    headers: { "Content-Type": "application/json", ...corsHeaders }
+  });
+}
+
 function upstreamFailureResponse(upstreamError, format, corsHeaders) {
   const status = UPSTREAM_PASSTHROUGH_STATUSES.includes(upstreamError?.status)
     ? upstreamError.status
@@ -1079,7 +1301,15 @@ function upstreamFailureResponse(upstreamError, format, corsHeaders) {
 
 // ─── Format Conversion Functions ────────────────────────────────────────
 
-// Anthropic Messages API → OpenAI format
+// Anthropic Messages API → OpenAI format.
+//
+// The tool mapping is the part that matters for agent clients: Claude Code and
+// Cline express every file edit and shell command as a tool call, so dropping
+// tools here means the agent never gets a call back and waits forever. Two
+// structures have to survive the trip in each direction:
+//   tools [{name, description, input_schema}]                 → OpenAI tools
+//   assistant tool_use blocks                                 → assistant tool_calls
+//   user tool_result blocks                                   → role:'tool' messages
 function anthropicToOpenAI(body) {
   const messages = [];
 
@@ -1091,24 +1321,58 @@ function anthropicToOpenAI(body) {
     if (sysText) messages.push({ role: 'system', content: sysText });
   }
 
-  // Convert messages
   for (const msg of (body.messages || [])) {
-    let content = '';
     if (typeof msg.content === 'string') {
-      content = msg.content;
-    } else if (Array.isArray(msg.content)) {
-      content = msg.content.map(b => {
+      messages.push({ role: msg.role, content: msg.content });
+      continue;
+    }
+    if (!Array.isArray(msg.content)) continue;
+
+    if (msg.role === 'assistant') {
+      const text = msg.content.filter(b => b.type === 'text').map(b => b.text || '').join('\n');
+      const toolUses = msg.content.filter(b => b.type === 'tool_use');
+      if (toolUses.length > 0) {
+        messages.push({
+          role: 'assistant',
+          content: text || null,
+          tool_calls: toolUses.map(b => ({
+            id: b.id,
+            type: 'function',
+            function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) }
+          }))
+        });
+      } else {
+        messages.push({ role: 'assistant', content: text });
+      }
+      continue;
+    }
+
+    // User turn. A tool_result must become its own role:'tool' message, because
+    // OpenAI requires it to follow the assistant message carrying that
+    // tool_call_id — folding it into the user text (as this used to do) loses
+    // the call/result pairing and the provider rejects or ignores it.
+    const textParts = msg.content.filter(b => b.type !== 'tool_result');
+    const results = msg.content.filter(b => b.type === 'tool_result');
+
+    if (textParts.length > 0) {
+      const text = textParts.map(b => {
         if (b.type === 'text') return b.text || '';
         if (b.type === 'image') return '[Image]';
-        if (b.type === 'tool_use') return `[Tool: ${b.name}]`;
-        if (b.type === 'tool_result') return b.content || '';
         return '';
-      }).join('\n');
+      }).filter(Boolean).join('\n');
+      if (text) messages.push({ role: 'user', content: text });
     }
-    messages.push({ role: msg.role, content });
+
+    for (const result of results) {
+      messages.push({
+        role: 'tool',
+        tool_call_id: result.tool_use_id,
+        content: normalizeToolResult(result.content)
+      });
+    }
   }
 
-  return {
+  const out = {
     model: body.model,
     messages,
     max_tokens: body.max_tokens || 4096,
@@ -1117,14 +1381,73 @@ function anthropicToOpenAI(body) {
     stream: body.stream || false,
     stop: body.stop_sequences
   };
+
+  // Omit tools entirely when there are none: several providers 400 on `tools: []`.
+  if (Array.isArray(body.tools) && body.tools.length > 0) {
+    out.tools = body.tools.map(t => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.input_schema ?? { type: 'object', properties: {} }
+      }
+    }));
+  }
+
+  // `disable_parallel_tool_use` has no OpenAI equivalent and is dropped.
+  const choice = body.tool_choice;
+  if (choice && typeof choice === 'object') {
+    if (choice.type === 'auto') out.tool_choice = 'auto';
+    else if (choice.type === 'any') out.tool_choice = 'required';
+    else if (choice.type === 'tool' && choice.name) {
+      out.tool_choice = { type: 'function', function: { name: choice.name } };
+    }
+  } else if (typeof choice === 'string' && choice) {
+    out.tool_choice = choice;
+  }
+
+  return out;
 }
+
+// OpenAI finish_reason → Anthropic stop_reason. Passing the OpenAI value through
+// (as this used to) sends `tool_calls`, which is not a valid Anthropic
+// stop_reason and makes the client mis-handle the turn.
+const ANTHROPIC_STOP_REASONS = {
+  stop: 'end_turn',
+  length: 'max_tokens',
+  tool_calls: 'tool_use',
+  function_call: 'tool_use',
+  content_filter: 'end_turn'
+};
 
 // OpenAI format → Anthropic Messages response
 function openAIToAnthropic(openaiRes, model) {
   const choice = openaiRes.choices?.[0];
   const content = [];
+
   if (choice?.message?.content) {
     content.push({ type: 'text', text: choice.message.content });
+  }
+
+  for (const call of (choice?.message?.tool_calls || [])) {
+    content.push({
+      type: 'tool_use',
+      id: call.id || `toolu_${Date.now().toString(36)}`,
+      name: call.function?.name || '',
+      input: safeParseJson(call.function?.arguments)
+    });
+  }
+
+  // Some OpenAI-compatible upstreams still answer with the legacy single
+  // `function_call` object instead of the `tool_calls` array.
+  const legacyCall = choice?.message?.function_call;
+  if (legacyCall && !(choice?.message?.tool_calls || []).length) {
+    content.push({
+      type: 'tool_use',
+      id: `toolu_${Date.now().toString(36)}`,
+      name: legacyCall.name || '',
+      input: safeParseJson(legacyCall.arguments)
+    });
   }
 
   return {
@@ -1133,7 +1456,7 @@ function openAIToAnthropic(openaiRes, model) {
     role: 'assistant',
     content,
     model: model || openaiRes.model,
-    stop_reason: choice?.finish_reason === 'stop' ? 'end_turn' : choice?.finish_reason || 'end_turn',
+    stop_reason: ANTHROPIC_STOP_REASONS[choice?.finish_reason] || 'end_turn',
     stop_sequence: null,
     usage: {
       input_tokens: openaiRes.usage?.prompt_tokens || 0,
@@ -1171,16 +1494,38 @@ function geminiToOpenAI(body) {
   };
 }
 
+// OpenAI finish_reason → Gemini finishReason. The raw OpenAI value used to be
+// passed through, so a tool-calling or truncated response came back with
+// `finishReason: "tool_calls"` / `"length"`, neither of which is a value in
+// Gemini's enum.
+const GEMINI_FINISH_REASONS = {
+  stop: 'STOP',
+  length: 'MAX_TOKENS',
+  tool_calls: 'STOP',
+  function_call: 'STOP',
+  content_filter: 'SAFETY'
+};
+
 // OpenAI format → Gemini response
 function openAIToGemini(openaiRes, model) {
   const choice = openaiRes.choices?.[0];
+  const parts = [];
+
+  if (choice?.message?.content) parts.push({ text: choice.message.content });
+
+  // Gemini expresses a tool call as a `functionCall` part; without this a
+  // tool-driven Gemini client is handed an empty candidate and stalls.
+  for (const call of (choice?.message?.tool_calls || [])) {
+    if (call?.function?.name) {
+      parts.push({ functionCall: { name: call.function.name, args: safeParseJson(call.function.arguments) } });
+    }
+  }
+  if (!parts.length) parts.push({ text: '' });
+
   return {
     candidates: [{
-      content: {
-        parts: [{ text: choice?.message?.content || '' }],
-        role: 'model'
-      },
-      finishReason: choice?.finish_reason === 'stop' ? 'STOP' : choice?.finish_reason || 'STOP'
+      content: { parts, role: 'model' },
+      finishReason: GEMINI_FINISH_REASONS[choice?.finish_reason] || 'STOP'
     }],
     usageMetadata: {
       promptTokenCount: openaiRes.usage?.prompt_tokens || 0,
@@ -1193,72 +1538,224 @@ function openAIToGemini(openaiRes, model) {
 
 // ─── Streaming Format Converters ────────────────────────────────────────
 
-// TransformStream: OpenAI SSE → Anthropic SSE
-function openAIStreamToAnthropic(model) {
-  let started = false;
+// TransformStream: OpenAI SSE → Anthropic SSE.
+//
+// A stateful incremental parser. The previous version emitted content_block_start
+// on every content delta instead of once per block, never emitted message_delta
+// (so the client never learned stop_reason), ignored streaming tool calls
+// entirely, and built its JSON by hand with `.replace(/"/g,'\\"')` — which
+// corrupts any backslash, tab, CR or control character, i.e. exactly what appears
+// in the code an agent writes, yielding invalid JSON the client silently drops.
+//
+// The block-index bookkeeping is the contract that matters: text and tool_use
+// blocks share one monotonic index sequence, each content_block_start claims the
+// next index, and every later delta/stop refers back to the index of the block it
+// belongs to.
+function openAIStreamToAnthropic(model, inputTokensHint = 0) {
+  const encoder = new TextEncoder();
+  const reader = createSSELineReader();
+
+  const st = {
+    messageStarted: false,
+    messageId: null,
+    nextBlockIndex: 0,
+    openIndex: null,         // index of the currently open content block
+    openType: null,          // 'text' | 'tool_use' | null
+    openToolCallIndex: null, // which OpenAI tool_calls[].index that block belongs to
+    stopReason: null,
+    usage: null,
+    finishEmitted: false
+  };
+
+  const sse = (event, data) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+  const closeOpenBlock = (controller) => {
+    if (st.openIndex === null) return;
+    controller.enqueue(encoder.encode(sse('content_block_stop', {
+      type: 'content_block_stop', index: st.openIndex
+    })));
+    st.openIndex = null;
+    st.openType = null;
+    st.openToolCallIndex = null;
+  };
+
+  const openTextBlock = (controller) => {
+    closeOpenBlock(controller);
+    st.openIndex = st.nextBlockIndex++;
+    st.openType = 'text';
+    controller.enqueue(encoder.encode(sse('content_block_start', {
+      type: 'content_block_start',
+      index: st.openIndex,
+      content_block: { type: 'text', text: '' }
+    })));
+  };
+
+  const openToolBlock = (controller, callIndex, id, name) => {
+    closeOpenBlock(controller);
+    st.openIndex = st.nextBlockIndex++;
+    st.openType = 'tool_use';
+    st.openToolCallIndex = callIndex;
+    controller.enqueue(encoder.encode(sse('content_block_start', {
+      type: 'content_block_start',
+      index: st.openIndex,
+      // Only the first fragment of a call carries id/name; later fragments are
+      // arguments only, which is why the open block is keyed by OpenAI's index.
+      content_block: { type: 'tool_use', id: id || `toolu_${st.openIndex}`, name: name || '', input: {} }
+    })));
+  };
+
+  const startMessage = (controller) => {
+    if (st.messageStarted) return;
+    st.messageStarted = true;
+    controller.enqueue(encoder.encode(sse('message_start', {
+      type: 'message_start',
+      message: {
+        id: st.messageId || `msg_${Date.now()}`,
+        type: 'message',
+        role: 'assistant',
+        model,
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: inputTokensHint, output_tokens: 0 }
+      }
+    })));
+  };
+
+  const finish = (controller) => {
+    if (st.finishEmitted) return;
+    st.finishEmitted = true;
+    // A stream carrying only a finish_reason never opened a block, and one that
+    // ended early never sent message_start — both still have to be closed out or
+    // the client waits forever for a terminal event.
+    startMessage(controller);
+    closeOpenBlock(controller);
+    controller.enqueue(encoder.encode(sse('message_delta', {
+      type: 'message_delta',
+      delta: { stop_reason: st.stopReason || 'end_turn', stop_sequence: null },
+      usage: { output_tokens: st.usage?.completion_tokens || 0 }
+    })));
+    controller.enqueue(encoder.encode(sse('message_stop', { type: 'message_stop' })));
+  };
+
+  const handleLine = (line, controller) => {
+    if (st.finishEmitted) return;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) return;
+    if (payload === '[DONE]') { finish(controller); return; }
+
+    let parsed;
+    try { parsed = JSON.parse(payload); } catch (e) { return; }
+
+    if (!st.messageId && parsed.id) st.messageId = parsed.id;
+    // Providers using stream_options.include_usage send usage on a trailing chunk
+    // whose choices array is empty, so capture it before bailing out below.
+    if (parsed.usage) st.usage = parsed.usage;
+
+    const choice = parsed.choices?.[0];
+    if (!choice) return;
+    if (!st.messageStarted) startMessage(controller);
+
+    const delta = choice.delta || {};
+
+    if (typeof delta.content === 'string' && delta.content.length > 0) {
+      if (st.openType !== 'text') openTextBlock(controller);
+      controller.enqueue(encoder.encode(sse('content_block_delta', {
+        type: 'content_block_delta',
+        index: st.openIndex,
+        delta: { type: 'text_delta', text: delta.content }
+      })));
+    }
+
+    for (const call of (delta.tool_calls || [])) {
+      const callIndex = call.index ?? 0;
+      if (st.openType !== 'tool_use' || st.openToolCallIndex !== callIndex) {
+        openToolBlock(controller, callIndex, call.id, call.function?.name);
+      }
+      // Arguments stream in as fragments and are forwarded verbatim — the client
+      // reassembles partial_json itself. Parsing them here would have to fail on
+      // every intermediate fragment, since each one is incomplete JSON by design.
+      const args = call.function?.arguments;
+      if (typeof args === 'string' && args.length > 0) {
+        controller.enqueue(encoder.encode(sse('content_block_delta', {
+          type: 'content_block_delta',
+          index: st.openIndex,
+          delta: { type: 'input_json_delta', partial_json: args }
+        })));
+      }
+    }
+
+    // Legacy single-call streaming shape used by some OpenAI-compatible upstreams.
+    if (delta.function_call) {
+      if (st.openType !== 'tool_use' || st.openToolCallIndex !== -1) {
+        openToolBlock(controller, -1, null, delta.function_call.name);
+      }
+      if (typeof delta.function_call.arguments === 'string' && delta.function_call.arguments.length > 0) {
+        controller.enqueue(encoder.encode(sse('content_block_delta', {
+          type: 'content_block_delta',
+          index: st.openIndex,
+          delta: { type: 'input_json_delta', partial_json: delta.function_call.arguments }
+        })));
+      }
+    }
+
+    if (choice.finish_reason) {
+      st.stopReason = ANTHROPIC_STOP_REASONS[choice.finish_reason] || 'end_turn';
+    }
+  };
+
   return new TransformStream({
     transform(chunk, controller) {
-      const text = new TextDecoder().decode(chunk);
-      const lines = text.split('\n');
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') {
-          controller.enqueue(new TextEncoder().encode(
-            `event: message_stop\ndata: {"type":"message_stop"}\n\n`
-          ));
-          continue;
-        }
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta;
-          if (!started) {
-            started = true;
-            controller.enqueue(new TextEncoder().encode(
-              `event: message_start\ndata: {"type":"message_start","message":{"id":"${parsed.id || 'msg_' + Date.now()}","type":"message","role":"assistant","content":[],"model":"${model}","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}\n\n`
-            ));
-          }
-          if (delta?.content) {
-            controller.enqueue(new TextEncoder().encode(
-              `event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\nevent: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"${delta.content.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"}}\n\n`
-            ));
-          }
-          if (parsed.choices?.[0]?.finish_reason) {
-            controller.enqueue(new TextEncoder().encode(
-              `event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`
-            ));
-          }
-        } catch (e) {}
-      }
+      for (const line of reader.push(chunk)) handleLine(line, controller);
+    },
+    flush(controller) {
+      // Not every provider sends [DONE]; without this the stream would end with
+      // an open block and no message_stop.
+      for (const line of reader.flush()) handleLine(line, controller);
+      finish(controller);
     }
   });
 }
 
 // TransformStream: OpenAI SSE → Gemini streaming
 function openAIStreamToGemini() {
+  const encoder = new TextEncoder();
+  const reader = createSSELineReader();
+  let done = false;
+
+  const finishGemini = (controller) => {
+    if (done) return;
+    done = true;
+    controller.enqueue(encoder.encode(JSON.stringify({ done: true }) + '\n'));
+  };
+
+  const handleLine = (line, controller) => {
+    if (done) return;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) return;
+    if (payload === '[DONE]') { finishGemini(controller); return; }
+
+    let parsed;
+    try { parsed = JSON.parse(payload); } catch (e) { return; }
+    const delta = parsed.choices?.[0]?.delta;
+    if (delta?.content) {
+      controller.enqueue(encoder.encode(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: delta.content }], role: 'model' }, finishReason: 'STOP' }]
+      }) + '\n'));
+    }
+  };
+
   return new TransformStream({
     transform(chunk, controller) {
-      const text = new TextDecoder().decode(chunk);
-      const lines = text.split('\n');
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') {
-          controller.enqueue(new TextEncoder().encode(JSON.stringify({ done: true }) + '\n'));
-          continue;
-        }
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta;
-          if (delta?.content) {
-            controller.enqueue(new TextEncoder().encode(JSON.stringify({
-              candidates: [{ content: { parts: [{ text: delta.content }], role: 'model' }, finishReason: 'STOP' }]
-            }) + '\n'));
-          }
-        } catch (e) {}
-      }
+      for (const line of reader.push(chunk)) handleLine(line, controller);
+    },
+    flush(controller) {
+      for (const line of reader.flush()) handleLine(line, controller);
+      finishGemini(controller);
     }
   });
 }
@@ -1321,6 +1818,151 @@ async function trackTokenUsage(providerId, tokenIndex, env) {
       ON CONFLICT(provider_id, token_index) DO UPDATE SET calls = calls + 1
     `).bind(providerId, tokenIndex).run();
   } catch (e) { console.error("Token usage tracking error:", e); }
+}
+
+// Drop the headers that describe a body we are about to replace. Once a
+// response is re-serialized (reasoning_content deleted, so the body is SHORTER),
+// re-chunked into an SSE stream, or converted to another format, the upstream's
+// framing headers describe a body that no longer exists. content-length is the
+// dangerous one: the client reads that many bytes and blocks forever waiting for
+// the rest of a body we already finished sending. content-encoding is stale too,
+// because fetch hands us an already-decoded body, so a retained `gzip` makes the
+// client try to gunzip plain text. transfer-encoding and connection are
+// hop-by-hop and are not valid on a Worker response at all.
+function stripFramingHeaders(headers) {
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  headers.delete("transfer-encoding");
+  headers.delete("connection");
+  return headers;
+}
+
+// One incremental UTF-8 decoder plus SSE line framer, shared by every streaming
+// transform. The old `new TextDecoder().decode(chunk).split("\n")` idiom was
+// copied into four transforms and had two defects: a fresh decoder per chunk (no
+// { stream: true }) turned any multi-byte character straddling a chunk boundary
+// into U+FFFD, and with no carry-over a `data:` line that a network read split in
+// two was parsed as two invalid lines and silently dropped. Keeping one decoder in
+// streaming mode plus the partial line fixes both, and fixes them once.
+function createSSELineReader() {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  return {
+    // Complete lines available so far, without their trailing "\n".
+    push(chunk) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = [];
+      let nl;
+      while ((nl = buffer.indexOf("\n")) !== -1) {
+        lines.push(buffer.slice(0, nl));
+        buffer = buffer.slice(nl + 1);
+      }
+      return lines;
+    },
+    // Flush the decoder's pending bytes and any unterminated trailing line.
+    flush() {
+      buffer += decoder.decode();
+      const rest = buffer;
+      buffer = "";
+      return rest.length ? [rest] : [];
+    }
+  };
+}
+
+// Parsing provider-supplied tool arguments must never throw: some upstreams send
+// an empty string or a truncated fragment when a call is cut off mid-stream.
+function safeParseJson(text) {
+  if (typeof text !== "string" || !text.trim()) return {};
+  try {
+    const parsed = JSON.parse(text);
+    return parsed === null ? {} : parsed;
+  } catch (e) {
+    return {};
+  }
+}
+
+// Anthropic tool_result.content is either a plain string or an array of content
+// blocks; OpenAI wants a string. Mirrors the '[Image]' placeholder that the text
+// path already uses for image blocks.
+function normalizeToolResult(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map(b => {
+      if (typeof b === "string") return b;
+      if (b?.type === "text") return b.text || "";
+      if (b?.type === "image") return "[Image]";
+      return "";
+    }).filter(Boolean).join("\n");
+  }
+  if (content == null) return "";
+  return JSON.stringify(content);
+}
+
+// Rough token estimate for /v1/messages/count_tokens. No upstream implements that
+// endpoint, so answering locally is the only way Claude Code gets a number for its
+// context gauge. Non-ASCII counts about a token per character rather than the
+// latin ~4-chars-per-token rule, because Persian and CJK tokenize far denser —
+// the exact value only needs to be in the right ballpark.
+function estimateTokens(text) {
+  if (!text) return 0;
+  let ascii = 0, nonAscii = 0;
+  for (const ch of text) {
+    if (ch.charCodeAt(0) < 128) ascii++;
+    else nonAscii++;
+  }
+  return Math.ceil(ascii / 4) + nonAscii;
+}
+
+// Everything in an Anthropic request that carries tokens: the system prompt, all
+// message text, tool_use inputs, tool results, and the tool definitions — Claude
+// Code resends those every turn, so ignoring them undercounts badly.
+function anthropicRequestText(body) {
+  const parts = [];
+
+  if (typeof body.system === "string") parts.push(body.system);
+  else if (Array.isArray(body.system)) parts.push(...body.system.map(b => b?.text || ""));
+
+  for (const msg of (body.messages || [])) {
+    if (typeof msg.content === "string") { parts.push(msg.content); continue; }
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block?.type === "text") parts.push(block.text || "");
+      else if (block?.type === "tool_use") parts.push(block.name || "", JSON.stringify(block.input ?? {}));
+      else if (block?.type === "tool_result") parts.push(normalizeToolResult(block.content));
+    }
+  }
+
+  for (const tool of (body.tools || [])) {
+    parts.push(tool?.name || "", tool?.description || "", JSON.stringify(tool?.input_schema ?? {}));
+  }
+
+  return parts.join("\n");
+}
+
+// POST /v1/messages/count_tokens — Claude Code calls this before a turn to size
+// its context gauge. No provider implements it, so it used to fall through to
+// the proxy and 404. Answer it locally from the request we already have.
+async function handleCountTokens(request, env, corsHeaders) {
+  const apiKey = extractApiKey(request);
+  const apiKeyData = await validateApiKey(env, apiKey);
+  if (!apiKeyData) {
+    return new Response(JSON.stringify({
+      type: 'error', error: { type: 'authentication_error', message: 'Invalid API key' }
+    }), { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } });
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return new Response(JSON.stringify({
+      type: 'error', error: { type: 'invalid_request_error', message: 'Request body must be valid JSON' }
+    }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } });
+  }
+
+  return new Response(JSON.stringify({
+    input_tokens: estimateTokens(anthropicRequestText(body))
+  }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
 }
 
 // Wrap a streaming response to capture usage data from SSE chunks
@@ -1387,24 +2029,30 @@ function captureStreamUsage(response, token, endpoint, model, env, apiKeyId) {
   return new Response(stream, {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers
+    headers: stripFramingHeaders(new Headers(response.headers))
   });
 }
 
 // ─── Public Health Check ─────────────────────────────────────────────────
 
+// Health is reported from `custom_providers` — the table that actually drives
+// routing. It used to read `api_status`, which nothing writes to any more, so
+// the endpoint reported `degraded` with 0 total endpoints on a perfectly
+// healthy gateway and monitoring tools alerted on it.
 async function handlePublicHealth(env) {
-  const { results: servers } = await env.DB.prepare("SELECT url, is_blocked, disabled FROM api_status").all();
-  const healthy = servers ? servers.filter(s => s.is_blocked === 0 && s.disabled === 0).length : 0;
-  const blocked = servers ? servers.filter(s => s.is_blocked === 1).length : 0;
-  const disabled = servers ? servers.filter(s => s.disabled === 1).length : 0;
+  const { results: providers } = await env.DB.prepare(
+    "SELECT name, slug, enabled FROM custom_providers"
+  ).all();
+
+  const list = providers || [];
+  const enabled = list.filter(p => p.enabled === 1);
 
   return new Response(JSON.stringify({
-    status: healthy > 0 ? "healthy" : "degraded",
-    healthy_endpoints: healthy,
-    blocked_endpoints: blocked,
-    disabled_endpoints: disabled,
-    total_endpoints: servers ? servers.length : 0
+    status: enabled.length > 0 ? "healthy" : "degraded",
+    healthy_endpoints: enabled.length,
+    blocked_endpoints: 0,
+    disabled_endpoints: list.length - enabled.length,
+    total_endpoints: list.length
   }), {
     headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
   });
@@ -2026,7 +2674,7 @@ async function handleModelsEndpoint(env, corsHeaders) {
     if (customProviders) {
       for (const cp of customProviders) {
         const slug = cp.slug || providerSlug(cp.name);
-        const cachedModels = JSON.parse(cp.fetched_models || "[]");
+        const cachedModels = parseCachedModels(cp.fetched_models);
         // Models the admin hid from this listing (routing still allows them)
         const disabledModels = new Set(JSON.parse(cp.disabled_models || "[]"));
 
@@ -2982,6 +3630,13 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+// Every admin page is a view of live DB state — a provider can be toggled off
+// between two loads — so a cached copy is always wrong.
+function noStore(response) {
+  if (response && response.headers) response.headers.set("Cache-Control", "no-store");
+  return response;
+}
+
 function parseTokens(tokensRaw) {
   try {
     const arr = JSON.parse(tokensRaw || "[]");
@@ -3490,9 +4145,15 @@ async function renderAdminModels(env, url) {
   const providerCount = new Set(rows.map(r => r.pid)).size;
 
   const providerOptions = (providers || [])
-    .filter(p => rows.some(r => r.pid === p.id))
+    .filter(p => p.enabled === 1 && rows.some(r => r.pid === p.id))
     .map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
     .join("");
+
+  const offBanner = offProviders.length === 0 ? "" : `
+    <div class="alert alert-blue" style="margin-bottom:16px">
+      <span>i</span>
+      <span>${offModels} model${offModels === 1 ? '' : 's'} from ${offProviders.length} disabled provider${offProviders.length === 1 ? '' : 's'} (${escapeHtml(offProviders.map(p => p.name).join(', '))}) ${offProviders.length === 1 ? 'is' : 'are'} not listed here — a disabled provider serves no models. Enable it at <a href="/admin/providers" style="color:var(--accent-blue)">Providers</a> to manage its models again.</span>
+    </div>`;
 
   // Server-render the first page only so the page is readable without JS; the
   // client takes over filtering and pagination from the same DATA blob.
@@ -3531,6 +4192,8 @@ async function renderAdminModels(env, url) {
         <button class="btn btn-secondary btn-sm" onclick="bulkModels(true)">Show all filtered</button>
       </div>
     </div>
+
+    ${offBanner}
 
     <div class="stat-grid">
       <div class="stat-card blue">
@@ -4508,6 +5171,8 @@ async function renderAdminDocs(env) {
     .format-tab{padding:6px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border-subtle);background:var(--glass-bg);color:var(--text-secondary);transition:all 0.2s}
     .format-tab.active{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.3);color:var(--accent)}
     .format-tab:hover{border-color:rgba(99,102,241,0.3)}
+    .format-panel{display:none}
+    .format-panel.active{display:block}
   </style>
 
   <div class="page-header">
@@ -4530,14 +5195,111 @@ async function renderAdminDocs(env) {
   <div class="docs-section">
     <h2>🔐 Authentication</h2>
     <div class="auth-box">
-      <div class="label">Include your API key in the Authorization header:</div>
+      <div class="label">Send your API key in whichever header your client uses — all three are accepted:</div>
       <div class="code-wrapper">
         <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
-        <pre><code>Authorization: Bearer sk-your-api-key-here</code></pre>
+        <pre><code>Authorization: Bearer sk-your-api-key-here   # OpenAI SDK, Cline, Continue
+x-api-key: sk-your-api-key-here             # Anthropic SDK, Claude Code
+x-goog-api-key: sk-your-api-key-here        # Gemini SDK</code></pre>
       </div>
     </div>
     <div class="info-card">
-      <p>Create API tokens from the <a href="/admin/tokens" style="color:var(--accent)">Tokens</a> page. Each request must include a valid API key in the <code>Authorization</code> header.</p>
+      <p>Create API tokens from the <a href="/admin/tokens" style="color:var(--accent)">Tokens</a> page. Gateway tokens start with <code>sk-</code> — don't confuse them with your provider's own API keys, which stay in the <a href="/admin/providers" style="color:var(--accent)">Providers</a> page and never leave the Worker.</p>
+    </div>
+  </div>
+
+  <!-- Connect a coding agent -->
+  <div class="docs-section">
+    <h2>🤖 Connect a Coding Agent</h2>
+    <div class="info-card">
+      <p>Claude Code and Cline drive every file edit and shell command through <strong>tool calls</strong>. The gateway supports tool calling on all three dialects, in streaming and non-streaming mode. You need three things:</p>
+      <table class="param-table">
+        <tr><td><strong>Base URL</strong></td><td><code>https://YOUR_WORKER.workers.dev/v1</code> (Claude Code: drop the <code>/v1</code>)</td></tr>
+        <tr><td><strong>API key</strong></td><td>your gateway token, from the Tokens page</td></tr>
+        <tr><td><strong>Model</strong></td><td><code>slug/model</code>, e.g. <code>openai/gpt-4o</code></td></tr>
+      </table>
+    </div>
+
+    <div class="format-tabs">
+      <button class="format-tab active" onclick="showFormatTab(event, 'fmt-claude')">Claude Code</button>
+      <button class="format-tab" onclick="showFormatTab(event, 'fmt-cline')">Cline</button>
+      <button class="format-tab" onclick="showFormatTab(event, 'fmt-continue')">Continue</button>
+    </div>
+
+    <div id="fmt-claude" class="format-panel active">
+      <div class="endpoint-card">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method-badge method-post">ENV</span>
+          <span class="endpoint-path">Claude Code</span>
+          <span class="endpoint-desc">Anthropic Messages API via /v1/messages</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="endpoint-body-inner">
+            <div class="code-wrapper">
+              <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+              <pre><code>export ANTHROPIC_BASE_URL="https://YOUR_WORKER.workers.dev"
+export ANTHROPIC_API_KEY="sk-your-api-key-here"
+export ANTHROPIC_MODEL="openai/gpt-4o"
+
+claude</code></pre>
+            </div>
+            <div class="info-card">
+              <p><code>ANTHROPIC_BASE_URL</code> takes no <code>/v1</code> suffix — Claude Code appends <code>/v1/messages</code> itself. Prefer <code>ANTHROPIC_API_KEY</code> (sent as <code>x-api-key</code>) over <code>ANTHROPIC_AUTH_TOKEN</code>; both work, but the former is the header Claude Code expects.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="fmt-cline" class="format-panel">
+      <div class="endpoint-card">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method-badge method-post">UI</span>
+          <span class="endpoint-path">Cline</span>
+          <span class="endpoint-desc">Settings panel</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="endpoint-body-inner">
+            <table class="param-table">
+              <tr><td><strong>API Provider</strong></td><td>OpenAI Compatible</td></tr>
+              <tr><td><strong>Base URL</strong></td><td><code>https://YOUR_WORKER.workers.dev/v1</code></td></tr>
+              <tr><td><strong>API Key</strong></td><td>your <code>sk-...</code> gateway token</td></tr>
+              <tr><td><strong>Model ID</strong></td><td><code>slug/model</code>, e.g. <code>openai/gpt-4o</code></td></tr>
+            </table>
+            <div class="info-card">
+              <p>Cline reads <code>GET /v1/models</code> for its model dropdown. Every model from every enabled provider is listed there as <code>slug/model</code>. If one is missing, unhide it on the <a href="/admin/models" style="color:var(--accent)">Models</a> page.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="fmt-continue" class="format-panel">
+      <div class="endpoint-card">
+        <div class="endpoint-header" onclick="toggleEndpoint(this)">
+          <span class="method-badge method-post">JSON</span>
+          <span class="endpoint-path">Continue</span>
+          <span class="endpoint-desc">~/.continue/config.json</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="endpoint-body-inner">
+            <div class="code-wrapper">
+              <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+              <pre><code>{
+  "title": "CFRouter",
+  "provider": "openai",
+  "model": "openai/gpt-4o",
+  "apiBase": "https://YOUR_WORKER.workers.dev/v1",
+  "apiKey": "sk-your-api-key-here"
+}</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <p><strong>Agent hangs with no output?</strong> Check the provider's Base URL ends in <code>/v1</code> and its token is valid — test it from the <a href="/admin/playground" style="color:var(--accent)">Playground</a>. <strong><code>404 Unknown provider slug?</code></strong> The error lists the slugs that exist; check the <a href="/admin/providers" style="color:var(--accent)">Providers</a> page.</p>
     </div>
   </div>
 
@@ -4647,7 +5409,12 @@ async function renderAdminDocs(env) {
             <tr><td>max_tokens</td><td>integer</td><td><span class="param-required">Required</span></td><td>Maximum tokens to generate</td></tr>
             <tr><td>system</td><td>string</td><td><span class="param-optional">Optional</span></td><td>System prompt</td></tr>
             <tr><td>stream</td><td>boolean</td><td><span class="param-optional">Optional</span></td><td>Enable SSE streaming. Default: false</td></tr>
+            <tr><td>tools</td><td>array</td><td><span class="param-optional">Optional</span></td><td>Tool definitions as <code>[{ name, description, input_schema }]</code> — what powers coding agents</td></tr>
+            <tr><td>tool_choice</td><td>object</td><td><span class="param-optional">Optional</span></td><td><code>{ "type": "auto" | "any" | "tool", "name": "..." }</code></td></tr>
           </table>
+          <div class="info-card">
+            <p>Tool use is fully supported, in streaming and non-streaming mode. Tools are forwarded to the provider, <code>tool_use</code> blocks come back as Anthropic content blocks, and the <code>tool_result</code> blocks you send back are converted to <code>role: "tool"</code> messages in the order the provider requires. This is the endpoint Claude Code calls.</p>
+          </div>
           <h3>cURL</h3>
           <div class="code-wrapper">
             <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
@@ -4677,6 +5444,76 @@ async function renderAdminDocs(env) {
   "stop_reason": "end_turn",
   "usage": { "input_tokens": 25, "output_tokens": 10 }
 }</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /v1/messages/count_tokens -->
+    <div class="endpoint-card">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/v1/messages/count_tokens</span>
+        <span class="endpoint-desc">Estimate the token count of a request</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-body-inner">
+          <div class="info-card">
+            <p>Claude Code calls this before a turn to size its context gauge. No provider implements it, so the gateway answers it locally — counting the system prompt, every message, tool inputs, tool results and the tool definitions, and weighting non-ASCII text (Persian, CJK) at roughly one token per character. It requires a valid API key and sends nothing upstream.</p>
+          </div>
+          <h3>cURL</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>curl -X POST https://YOUR_WORKER.workers.dev/v1/messages/count_tokens \\
+  -H "x-api-key: sk-your-api-key-here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "anthropic/claude-3.5-sonnet",
+    "system": "You are a helpful assistant.",
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ]
+  }'</code></pre>
+          </div>
+          <h3>Response</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>{ "input_tokens": 14 }</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /v1beta/models/{model}:streamGenerateContent (Gemini) -->
+    <div class="endpoint-card">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/v1beta/models/{model}:streamGenerateContent</span>
+        <span class="endpoint-desc">Google Gemini API format, streaming</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-body-inner">
+          <div class="info-card">
+            <p>Same request body as <code>:generateContent</code>, but the response is newline-delimited JSON — one candidate chunk per line, ending with <code>{"done": true}</code>. Function calls come back as <code>functionCall</code> parts inside the candidate content.</p>
+          </div>
+          <h3>cURL</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>curl -N -X POST "https://YOUR_WORKER.workers.dev/v1beta/models/gemini-2.0-flash:streamGenerateContent" \\
+  -H "Authorization: Bearer sk-your-api-key-here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "contents": [
+      { "role": "user", "parts": [{ "text": "Hello!" }] }
+    ]
+  }'</code></pre>
+          </div>
+          <h3>Response</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre><code>{"candidates":[{"content":{"parts":[{"text":"Hello! "}],"role":"model"},"finishReason":"STOP"}]}
+{"candidates":[{"content":{"parts":[{"text":"How can I help?"}],"role":"model"},"finishReason":"STOP"}]}
+{"done":true}</code></pre>
           </div>
         </div>
       </div>
@@ -4903,6 +5740,14 @@ print(response.choices[0].message.content)</code></pre>
     body.classList.toggle('open');
   }
 
+  // Switch the coding-agent setup tabs
+  function showFormatTab(evt, panelId) {
+    document.querySelectorAll('.format-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.format-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(panelId).classList.add('active');
+    evt.currentTarget.classList.add('active');
+  }
+
   // Copy code to clipboard
   function copyCode(btn) {
     const code = btn.parentElement.querySelector('code');
@@ -5027,6 +5872,18 @@ async function renderProviderDetail(id, env, url) {
       </div>
     </div>` : "";
 
+  // A disabled provider is out of the live catalog: its models are gone from
+  // /models and from the playground, and routing stops choosing it. Say so
+  // here, where its models are still visible for editing.
+  const disabledBanner = p.enabled ? "" : `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:14px 18px;border-radius:12px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.3);margin-bottom:20px">
+      <span style="font-size:16px;line-height:1.2">⏸</span>
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:4px">This provider is disabled</div>
+        <div style="font-size:12px;color:var(--text-secondary)">Its models are not listed at <span class="mono">/models</span>, not offered in the <a href="/admin/playground" style="color:var(--accent-blue)">Playground</a>, and not used for routing. Enable the provider above to put them back in rotation.</div>
+      </div>
+    </div>`;
+
   const content = `
     <div class="page-header">
       <div class="page-header-left">
@@ -5055,6 +5912,7 @@ async function renderProviderDetail(id, env, url) {
     </div>
 
     ${modelsErrorBanner}
+    ${disabledBanner}
 
     <!-- Stats -->
     <div class="stat-grid">
@@ -5542,8 +6400,65 @@ h3{font-size:15px;margin-top:20px}
     <div class="base-url">Base URL: <strong>https://your-worker.workers.dev</strong></div>
     <div class="auth-box">
       <h3>Authentication</h3>
-      <p>Include your API key in the Authorization header:</p>
-      <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
+      <p>Send your API key in whichever header your client uses — all three are accepted:</p>
+      <pre><code>Authorization: Bearer YOUR_API_KEY   # OpenAI SDK, Cline, Continue
+x-api-key: YOUR_API_KEY             # Anthropic SDK, Claude Code
+x-goog-api-key: YOUR_API_KEY        # Gemini SDK</code></pre>
+      <p style="margin-top:10px">Gateway tokens start with <code>sk-</code>.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="section-title">Connect a Coding Agent</h2>
+    <p style="color:#a0a7c0;margin-bottom:16px">Claude Code and Cline drive every file edit and shell command through <strong>tool calls</strong>. Tool calling is supported on all three dialects, streaming and non-streaming. You need three things: the base URL <code>https://your-worker.workers.dev/v1</code>, your gateway token, and a model named <code>slug/model</code>.</p>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method post">ENV</span>
+        <span class="path">Claude Code</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Claude Code speaks the Anthropic Messages API, served natively at <code>/v1/messages</code>.</p>
+        <pre><code>export ANTHROPIC_BASE_URL="https://your-worker.workers.dev"
+export ANTHROPIC_API_KEY="sk-your-api-key-here"
+export ANTHROPIC_MODEL="openai/gpt-4o"
+
+claude</code></pre>
+        <p style="margin-top:10px"><code>ANTHROPIC_BASE_URL</code> takes no <code>/v1</code> suffix — Claude Code appends <code>/v1/messages</code> itself.</p>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method post">UI</span>
+        <span class="path">Cline</span>
+      </div>
+      <div class="endpoint-body">
+        <table>
+          <tr><th>Field</th><th>Value</th></tr>
+          <tr><td>API Provider</td><td>OpenAI Compatible</td></tr>
+          <tr><td>Base URL</td><td><code>https://your-worker.workers.dev/v1</code></td></tr>
+          <tr><td>API Key</td><td>your <code>sk-...</code> gateway token</td></tr>
+          <tr><td>Model ID</td><td><code>slug/model</code>, e.g. <code>openai/gpt-4o</code></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method post">JSON</span>
+        <span class="path">Continue</span>
+      </div>
+      <div class="endpoint-body">
+        <p>In <code>~/.continue/config.json</code>:</p>
+        <pre><code>{
+  "title": "CFRouter",
+  "provider": "openai",
+  "model": "openai/gpt-4o",
+  "apiBase": "https://your-worker.workers.dev/v1",
+  "apiKey": "sk-your-api-key-here"
+}</code></pre>
+      </div>
     </div>
   </div>
 
@@ -5596,6 +6511,7 @@ h3{font-size:15px;margin-top:20px}
         <table>
           <tr><th>Header</th><th>Value</th></tr>
           <tr><td>Authorization</td><td>Bearer YOUR_API_KEY</td></tr>
+          <tr><td>x-api-key</td><td>YOUR_API_KEY (Anthropic-style clients)</td></tr>
           <tr><td>Content-Type</td><td>application/json</td></tr>
         </table>
         <h3>Request Body</h3>
@@ -5639,7 +6555,7 @@ h3{font-size:15px;margin-top:20px}
         <div class="path">/v1/messages</div>
       </div>
       <div class="endpoint-body">
-        <p>Anthropic Messages API compatible endpoint. Converts to OpenAI format internally.</p>
+        <p>Anthropic Messages API compatible endpoint. Converts to OpenAI format internally. Full tool calling — <code>tools</code>, <code>tool_choice</code>, <code>tool_use</code> and <code>tool_result</code> blocks — is supported in streaming and non-streaming mode. This is the endpoint Claude Code calls.</p>
         <h3>Request Body</h3>
 <pre><code>{
   "model": "anthropic/claude-3.5-sonnet",
@@ -5648,14 +6564,44 @@ h3{font-size:15px;margin-top:20px}
   "messages": [
     { "role": "user", "content": "Hello!" }
   ],
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Read a file from disk",
+      "input_schema": {
+        "type": "object",
+        "properties": { "path": { "type": "string" } },
+        "required": ["path"]
+      }
+    }
+  ],
   "stream": false
 }</code></pre>
         <h3>cURL</h3>
 <pre><code id="anthropic-curl">curl -X POST https://your-worker.workers.dev/v1/messages \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "x-api-key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"model":"anthropic/claude-3.5-sonnet","max_tokens":1024,"messages":[{"role":"user","content":"Hello!"}]}'</code></pre>
 <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('anthropic-curl').innerText);this.textContent='Copied!'">Copy</button>
+      </div>
+    </div>
+
+    <!-- Anthropic count_tokens -->
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <div class="method post">POST</div>
+        <div class="path">/v1/messages/count_tokens</div>
+      </div>
+      <div class="endpoint-body">
+        <p>Estimate the token count of a request. Answered locally by the gateway — nothing is sent upstream. Counts the system prompt, all messages, tool inputs, tool results and the tool definitions, weightings non-ASCII text at roughly one token per character.</p>
+        <h3>cURL</h3>
+<pre><code id="count-tokens-curl">curl -X POST https://your-worker.workers.dev/v1/messages/count_tokens \\
+  -H "x-api-key: YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"anthropic/claude-3.5-sonnet","messages":[{"role":"user","content":"Hello!"}]}'</code></pre>
+<button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('count-tokens-curl').innerText);this.textContent='Copied!'">Copy</button>
+        <h3>Response</h3>
+<pre><code>{ "input_tokens": 14 }</code></pre>
       </div>
     </div>
 
@@ -5666,7 +6612,7 @@ h3{font-size:15px;margin-top:20px}
         <div class="path">/v1beta/models/{model}:generateContent</div>
       </div>
       <div class="endpoint-body">
-        <p>Google Gemini API compatible endpoint. Converts to OpenAI format internally.</p>
+        <p>Google Gemini API compatible endpoint. Converts to OpenAI format internally. Tool definitions map to OpenAI functions, and incoming tool calls are returned as <code>functionCall</code> parts. Use <code>:streamGenerateContent</code> in place of <code>:generateContent</code> for a streamed response — newline-delimited JSON, one candidate chunk per line, ending with <code>{"done": true}</code> rather than <code>data:</code>-framed SSE.</p>
         <h3>Request Body</h3>
 <pre><code>{
   "contents": [
@@ -5681,11 +6627,17 @@ h3{font-size:15px;margin-top:20px}
   }
 }</code></pre>
         <h3>cURL</h3>
-<pre><code id="gemini-curl">curl -X POST https://your-worker.workers.dev/v1beta/models/gemini-pro:generateContent \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+<pre><code id="gemini-curl">curl -X POST https://your-worker.workers.dev/v1beta/models/google/gemini-pro:generateContent \\
+  -H "x-goog-api-key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"contents":[{"role":"user","parts":[{"text":"Hello!"}]}]}'</code></pre>
 <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('gemini-curl').innerText);this.textContent='Copied!'">Copy</button>
+        <h3>Streaming</h3>
+<pre><code id="gemini-stream-curl">curl -N -X POST https://your-worker.workers.dev/v1beta/models/google/gemini-pro:streamGenerateContent \\
+  -H "x-goog-api-key: YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"contents":[{"role":"user","parts":[{"text":"Hello!"}]}]}'</code></pre>
+<button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('gemini-stream-curl').innerText);this.textContent='Copied!'">Copy</button>
       </div>
     </div>
   </div>

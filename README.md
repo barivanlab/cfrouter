@@ -17,6 +17,7 @@
 | [Install via Cloudflare Dashboard](#️-install-via-cloudflare-dashboard-no-cli-required) | Deploy using only the web interface |
 | [Features](#-features) | Full feature list |
 | [API Reference](#-api-reference) | Endpoint documentation |
+| [Connect a Coding Agent](#-connect-a-coding-agent) | Claude Code, Cline, Continue setup |
 | [Configuration](#-configuration) | Advanced settings |
 | [Development](#️-development) | Local development guide |
 
@@ -35,15 +36,17 @@ If you're building with **AI agents** (VSCode Copilot, Cline, Continue, Cursor),
 | Feature | Description |
 |---|---|
 | **OpenAI-Compatible API** | Drop-in replacement for OpenAI's API — works with any client that speaks the `/v1/chat/completions` protocol |
+| **Tool Calling** | Full tool/function calling on all three dialects, streaming and non-streaming — what coding agents need |
+| **Claude Code Ready** | Native Anthropic Messages API at `/v1/messages`, including `/v1/messages/count_tokens` and `x-api-key` auth |
 | **Multi-Provider Load Balancing** | Round-robin routing across multiple AI providers and API keys |
+| **Automatic Failover** | A provider returning 401/403/429/5xx is skipped and the request retried against the next enabled provider |
 | **Admin Dashboard** | Built-in web UI for managing providers, API keys, and analytics |
 | **Playground** | Chat with any model from an enabled provider straight from the dashboard — streaming, system prompt, temperature, `max_tokens`, `top_p` |
 | **Model Curation** | Hide models you don't need from the public `/models` list, per model or in bulk. Hidden models stay callable by ID, so existing callers never break |
 | **Usage Tracking** | Per-key, per-model token usage analytics in Cloudflare D1 |
 | **Streaming Support** | Full SSE streaming support with transparent response transformation |
 | **Health Monitoring** | Real-time provider health status and endpoint availability |
-| **Auto-Unblock** | Temporarily failed endpoints are automatically re-enabled |
-| **CORS Enabled** | Ready for browser-based AI applications |
+| **CORS Enabled** | Ready for browser-based AI applications — Anthropic and OpenAI custom headers allowed |
 | **Zero-Config Deploy** | Single file, one `wrangler deploy` command |
 | **D1 Database** | Persistent storage on Cloudflare's edge — no external database needed |
 | **Reasoning Content Stripping** | Automatically removes `reasoning_content` fields for OpenAI-compatible clients |
@@ -279,22 +282,65 @@ https://cfrouter.<your-subdomain>.workers.dev
 
 ### Authentication
 
-Include your API key in the `Authorization` header:
+Include your API key in whichever header your client uses. All three are accepted:
+
+| Header | Used by |
+|---|---|
+| `Authorization: Bearer YOUR_API_KEY` | OpenAI SDKs, Cline, Continue, most tools |
+| `x-api-key: YOUR_API_KEY` | Anthropic SDKs, Claude Code |
+| `x-goog-api-key` / `?key=` | Gemini SDKs |
 
 ```
 Authorization: Bearer YOUR_API_KEY
+x-api-key: YOUR_API_KEY
 ```
+
+The key must start with `sk-` — create one under **Tokens** in the dashboard.
 
 ### Endpoints
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/v1/models` | List all available models |
-| `POST` | `/v1/chat/completions` | Create a chat completion |
+| `POST` | `/v1/chat/completions` | Create a chat completion (OpenAI format) |
 | `POST` | `/v1/embeddings` | Create embeddings |
+| `POST` | `/v1/messages` | Anthropic Messages API — for Claude Code and the Anthropic SDK |
+| `POST` | `/v1/messages/count_tokens` | Token count for a request (answered locally) |
+| `POST` | `/v1beta/models/{model}:generateContent` | Google Gemini format |
+| `POST` | `/v1beta/models/{model}:streamGenerateContent` | Google Gemini format, streaming |
 | `GET` | `/v1/health` | Public health check |
 | `GET` | `/docs` | API documentation |
 | `GET` | `/admin` | Admin dashboard |
+
+All three API dialects are translated to the OpenAI format and routed to whichever
+provider you name, so one gateway serves every client you use.
+
+### Tool calling
+
+Tool use works on all three dialects, in both streaming and non-streaming mode.
+This is what makes the gateway usable by coding agents — Claude Code and Cline
+drive every file edit and shell command through tool calls.
+
+```bash
+curl -X POST https://cfrouter.your-subdomain.workers.dev/v1/messages \
+  -H "x-api-key: YOUR_API_KEY" \
+  -H "content-type: application/json" \
+  -d '{
+    "model": "anthropic/claude-sonnet-4",
+    "max_tokens": 1024,
+    "stream": true,
+    "tools": [{
+      "name": "read_file",
+      "description": "Read a file from disk",
+      "input_schema": {
+        "type": "object",
+        "properties": { "path": { "type": "string" } },
+        "required": ["path"]
+      }
+    }],
+    "messages": [{ "role": "user", "content": "Read a.txt" }]
+  }'
+```
 
 ### Example: Chat Completion
 
@@ -321,6 +367,97 @@ openai/gpt-4o
 anthropic/claude-3.5-sonnet
 my-proxy/llama-3-8b
 ```
+
+The slug is the provider's **slug** as set in the dashboard (it defaults to the
+provider's name, lowercased and hyphenated). The part after the slash is passed
+to that provider unchanged, so it can itself contain slashes:
+
+```
+openrouter/meta-llama/llama-3.1-70b-instruct
+```
+
+A model name whose slug matches no provider returns a `404` listing the slugs
+that do exist, rather than an opaque upstream error.
+
+---
+
+## 🤖 Connect a Coding Agent
+
+Point your agent at the gateway instead of at the provider. You need three
+things, all from the dashboard:
+
+1. **Base URL** — `https://cfrouter.<your-subdomain>.workers.dev/v1`
+2. **API key** — create one under **Tokens** (starts with `sk-`)
+3. **Model** — `slug/model`, e.g. `openai/gpt-4o`
+
+Every request is routed to the provider you named. If a provider is down or its
+key is rejected, the gateway retries your request against another enabled
+provider before giving up.
+
+### Claude Code
+
+Claude Code speaks the Anthropic Messages API, which the gateway serves natively
+at `/v1/messages` — tool use included. Set these environment variables:
+
+```bash
+export ANTHROPIC_BASE_URL="https://cfrouter.your-subdomain.workers.dev"
+export ANTHROPIC_API_KEY="sk-your-gateway-token"
+export ANTHROPIC_MODEL="anthropic/claude-sonnet-4"
+```
+
+`ANTHROPIC_BASE_URL` takes no `/v1` suffix — Claude Code appends `/v1/messages`
+itself. Then run `claude` in your project as usual. Ask it to read a file: if the
+reply comes back with the file's contents, tool calling is working end to end.
+
+> Prefer `ANTHROPIC_API_KEY` over `ANTHROPIC_AUTH_TOKEN`. The former sends the key
+> in the `x-api-key` header, the latter in `Authorization: Bearer` — the gateway
+> accepts both, but `x-api-key` is the header Claude Code expects to use.
+
+### Cline
+
+In the Cline settings panel:
+
+| Field | Value |
+|---|---|
+| **API Provider** | OpenAI Compatible |
+| **Base URL** | `https://cfrouter.your-subdomain.workers.dev/v1` |
+| **API Key** | your `sk-...` gateway token |
+| **Model ID** | `slug/model`, e.g. `openai/gpt-4o` |
+
+Cline reads `GET /v1/models` to populate its model dropdown. Every model from
+every enabled provider is listed there as `slug/model`, so you can pick one from
+the list or type it by hand. If a model you need is missing, open
+**Models** in the dashboard and unhide it.
+
+### Continue
+
+In `~/.continue/config.json`, add an entry under `models`:
+
+```json
+{
+  "title": "CFRouter",
+  "provider": "openai",
+  "model": "openai/gpt-4o",
+  "apiBase": "https://cfrouter.your-subdomain.workers.dev/v1",
+  "apiKey": "sk-your-gateway-token"
+}
+```
+
+### Cursor / OpenAI SDK
+
+Any client that takes an OpenAI base URL works — set the base URL to
+`https://cfrouter.<your-subdomain>.workers.dev/v1`, the API key to your gateway
+token, and the model to `slug/model`.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `401 Invalid API key` | Key missing, or sent in the wrong header | Check the key is your **gateway** token (starts with `sk-`), not the provider's key |
+| `404 Unknown provider slug` | The slug doesn't match any provider | The error lists the valid slugs — check the **Providers** tab |
+| Agent hangs, no output | Streaming response can't complete | Confirm the provider's Base URL ends in `/v1` and the token is valid — use **Playground** to test the provider directly |
+| Empty model dropdown | Provider's `/v1/models` unreachable from the Worker | Models fall back to the cached list from **Fetch Models**; re-run it in the Providers tab |
+| `503 No providers available` | No enabled provider | Enable one in the **Providers** tab |
 
 ---
 
