@@ -58,9 +58,23 @@ const CORS_EXPOSE_HEADERS = [
 // ─── Provider Catalog ──────────────────────────────────────────────────
 // Pre-built catalog of popular AI providers for quick setup.
 // Users click a provider, get auto-filled fields, paste their API key, done.
+//
+// A handful of these need more than the key itself, and the extra value differs
+// per key — Cloudflare's account id, Azure's resource name, Modal's second
+// header. Those entries declare `fields` (see the Credential Fields section for what the
+// targets mean) and an `authStyle` when the provider does not take a plain
+// `Authorization: Bearer`. These shorthands keep those entries readable.
+const urlField = (key, label, placeholder) => ({ key, label, placeholder, target: "url" });
+const headerField = (key, name, label, extra = {}) => ({ key, label, name, target: "header", ...extra });
+const optionalField = (field) => ({ ...field, required: false });
+
 const PROVIDER_CATALOG = [
   // ── Frontier Labs ──
-  { id: "openai", name: "OpenAI", slug: "openai", baseUrl: "https://api.openai.com/v1", description: "GPT-4o, GPT-4.1, o3, DALL·E, Whisper, Codex", website: "https://platform.openai.com", color: "#10a37f", category: "frontier", hasFree: false, letter: "O" },
+  { id: "openai", name: "OpenAI", slug: "openai", baseUrl: "https://api.openai.com/v1", description: "GPT-4o, GPT-4.1, o3, DALL·E, Whisper, Codex", website: "https://platform.openai.com", color: "#10a37f", category: "frontier", hasFree: false, letter: "O",
+    fields: [
+      optionalField(headerField("organization", "OpenAI-Organization", "Organization ID", { placeholder: "org-..." })),
+      optionalField(headerField("project", "OpenAI-Project", "Project ID", { placeholder: "proj_..." })),
+    ] },
   { id: "anthropic", name: "Anthropic", slug: "anthropic", baseUrl: "https://api.anthropic.com/v1", description: "Claude 4 Opus, Sonnet, Haiku, Claude Code", website: "https://console.anthropic.com", color: "#d4a574", category: "frontier", hasFree: false, letter: "A" },
   { id: "gemini", name: "Google Gemini", slug: "gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta", description: "Gemini 2.5 Pro/Flash, Imagen, Veo", website: "https://aistudio.google.com", color: "#4285f4", category: "frontier", hasFree: true, letter: "G" },
   { id: "groq", name: "Groq", slug: "groq", baseUrl: "https://api.groq.com/openai/v1", description: "Ultra-fast Llama, Mixtral, Gemma on LPU", website: "https://console.groq.com", color: "#f55036", category: "frontier", hasFree: true, letter: "Gr" },
@@ -117,6 +131,9 @@ const PROVIDER_CATALOG = [
   { id: "alibaba", name: "Alibaba Bailian", slug: "alibaba", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", description: "Qwen models, Tongyi platform", website: "https://bailian.console.alibabacloud.com", color: "#ff6a00", category: "regional", hasFree: false, letter: "AB" },
   { id: "qwen-cloud", name: "Qwen Cloud", slug: "qwen-cloud", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", description: "Qwen 3 — Alibaba cloud inference", website: "https://dashscope.console.aliyun.com", color: "#6200ea", category: "regional", hasFree: false, letter: "QW" },
   { id: "kimi", name: "Kimi (Moonshot)", slug: "kimi", baseUrl: "https://api.moonshot.cn/v1", description: "Kimi K2 — 128K context", website: "https://platform.moonshot.cn", color: "#000000", category: "regional", hasFree: false, letter: "Ki" },
+  // The `?GroupId=` query parameter was MiniMax's legacy native-API scheme; the
+  // current OpenAI-compatible endpoint takes a plain Bearer key, so no companion
+  // field is declared here. A GroupId can still be added by hand on the provider.
   { id: "minimax", name: "MiniMax", slug: "minimax", baseUrl: "https://api.minimax.chat/v1", description: "MiniMax-Text, abab models", website: "https://platform.minimaxi.com", color: "#3b82f6", category: "regional", hasFree: false, letter: "MM" },
   { id: "volcengine", name: "ByteDance Volcengine", slug: "volcengine", baseUrl: "https://ark.cn-beijing.volces.com/api/v3", description: "Doubao models — ByteDance AI", website: "https://console.volcengine.com/ark", color: "#ff2d55", category: "regional", hasFree: false, letter: "VD" },
   { id: "baidu", name: "Baidu ERNIE", slug: "baidu", baseUrl: "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop", description: "ERNIE 4.5, Speed, Lite", website: "https://console.bce.baidu.com", color: "#2932e1", category: "regional", hasFree: true, letter: "BD" },
@@ -130,16 +147,33 @@ const PROVIDER_CATALOG = [
   { id: "sensenova", name: "SenseNova", slug: "sensenova", baseUrl: "https://api.sensenova.cn/v1", description: "SenseChat — SenseTime AI", website: "https://platform.sensenova.cn", color: "#00bfff", category: "regional", hasFree: false, letter: "SN" },
 
   // ── Enterprise Cloud ──
-  { id: "azure-openai", name: "Azure OpenAI", slug: "azure-openai", baseUrl: "https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT", description: "Enterprise GPT-4o, DALL·E, Whisper", website: "https://portal.azure.com", color: "#0078d4", category: "enterprise", hasFree: false, letter: "Az" },
+  { id: "azure-openai", name: "Azure OpenAI", slug: "azure-openai", baseUrl: "https://{resource}.openai.azure.com/openai/v1", description: "Enterprise GPT-4o, DALL·E, Whisper", website: "https://portal.azure.com", color: "#0078d4", category: "enterprise", hasFree: false, letter: "Az",
+    // Azure sends the key in `api-key`, not `Authorization: Bearer`, and the
+    // resource name is part of the host. `model` is the deployment name.
+    authStyle: "api-key",
+    fields: [urlField("resource", "Resource Name", "e.g. my-openai-resource")] },
   { id: "bedrock", name: "AWS Bedrock", slug: "bedrock", baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com", description: "Claude, Llama, Mistral on AWS", website: "https://console.aws.amazon.com/bedrock", color: "#ff9900", category: "enterprise", hasFree: false, letter: "BR" },
   { id: "vertex", name: "Google Vertex AI", slug: "vertex", baseUrl: "https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT", description: "Gemini, PaLM on Google Cloud", website: "https://console.cloud.google.com/vertex-ai", color: "#4285f4", category: "enterprise", hasFree: false, letter: "VA" },
-  { id: "cloudflare-ai", name: "Cloudflare AI", slug: "cloudflare-ai", baseUrl: "https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT/ai/run", description: "Workers AI — 10K Neurons/day free", website: "https://dash.cloudflare.com", color: "#f48120", category: "enterprise", hasFree: true, letter: "CF" },
+  { id: "cloudflare-ai", name: "Cloudflare AI", slug: "cloudflare-ai", baseUrl: "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1", description: "Workers AI — 10K Neurons/day free", website: "https://dash.cloudflare.com", color: "#f48120", category: "enterprise", hasFree: true, letter: "CF",
+    // The account id sits in the URL path and differs per API token, so it is
+    // entered alongside each token rather than baked into the base URL.
+    fields: [urlField("account_id", "Account ID", "e.g. 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d")] },
   { id: "scaleway", name: "Scaleway", slug: "scaleway", baseUrl: "https://api.scaleway.ai/v1", description: "1M free tokens — Paris edge", website: "https://console.scaleway.com", color: "#0055d6", category: "enterprise", hasFree: true, letter: "SC" },
   { id: "digitalocean", name: "DigitalOcean", slug: "digitalocean", baseUrl: "https://api.digitalocean.com/v2/genai", description: "DO AI — managed inference", website: "https://cloud.digitalocean.com", color: "#0080ff", category: "enterprise", hasFree: false, letter: "DO" },
   { id: "watsonx", name: "IBM watsonx", slug: "watsonx", baseUrl: "https://us-south.ml.cloud.ibm.com/ml/gateway/v1", description: "Granite models on IBM Cloud", website: "https://cloud.ibm.com", color: "#054ada", category: "enterprise", hasFree: false, letter: "Wx" },
   { id: "databricks", name: "Databricks", slug: "databricks", baseUrl: "https://YOUR_WORKSPACE.databricks.com/api/2.0/serving-endpoints", description: "DBRX, managed AI platform", website: "https://www.databricks.com", color: "#ff3621", category: "enterprise", hasFree: false, letter: "DB" },
-  { id: "snowflake", name: "Snowflake Cortex", slug: "snowflake", baseUrl: "https://YOUR_ACCOUNT.snowflakecomputing.com/api/v2/cortex/chat/completions", description: "Cortex AI — data + AI platform", website: "https://app.snowflake.com", color: "#29b5e8", category: "enterprise", hasFree: false, letter: "SF" },
-  { id: "modal", name: "Modal", slug: "modal", baseUrl: "https://YOUR_APP--YOUR_NAME.modal.run/v1", description: "Serverless GPU — $30/mo free credits", website: "https://modal.com", color: "#000000", category: "enterprise", hasFree: true, letter: "Md" },
+  { id: "snowflake", name: "Snowflake Cortex", slug: "snowflake", baseUrl: "https://{account}.snowflakecomputing.com/api/v2/cortex/v1", description: "Cortex AI — data + AI platform", website: "https://app.snowflake.com", color: "#29b5e8", category: "enterprise", hasFree: false, letter: "SF",
+    // Account identifier is part of the host; the key is a programmatic access
+    // token, sent as a bearer token.
+    fields: [urlField("account", "Account Identifier", "e.g. xy12345.us-east-1")] },
+  { id: "modal", name: "Modal", slug: "modal", baseUrl: "https://{app}.modal.run/v1", description: "Serverless GPU — $30/mo free credits", website: "https://modal.com", color: "#000000", category: "enterprise", hasFree: true, letter: "Md",
+    // Modal proxy auth is a key/secret header pair: the key goes in Modal-Key
+    // (authStyle below) and the secret is a companion field.
+    authStyle: "header:Modal-Key",
+    fields: [
+      urlField("app", "App Endpoint", "e.g. my-app--my-endpoint"),
+      headerField("modal_secret", "Modal-Secret", "Proxy Token Secret", { secret: true }),
+    ] },
 
   // ── Media / Specialty ──
   { id: "stability-ai", name: "Stability AI", slug: "stability-ai", baseUrl: "https://api.stability.ai/v2beta", description: "Stable Diffusion, SDXL, video gen", website: "https://platform.stability.ai", color: "#a855f7", category: "media", hasFree: false, letter: "SA" },
@@ -336,7 +370,8 @@ async function initDatabase(env) {
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, base_url TEXT NOT NULL UNIQUE,
         tokens TEXT NOT NULL DEFAULT '[]', enabled INTEGER DEFAULT 1,
         fetched_models TEXT DEFAULT '[]', slug TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        token_selection TEXT DEFAULT 'round-robin', disabled_models TEXT DEFAULT '[]'
+        token_selection TEXT DEFAULT 'round-robin', disabled_models TEXT DEFAULT '[]',
+        credential_fields TEXT DEFAULT '[]', auth_style TEXT DEFAULT 'bearer'
       )`),
       env.DB.prepare(`CREATE TABLE IF NOT EXISTS token_usage (
         provider_id INTEGER NOT NULL, token_index INTEGER NOT NULL, calls INTEGER DEFAULT 0,
@@ -366,6 +401,8 @@ async function initDatabase(env) {
     // Migrations for existing databases (safe to run repeatedly)
     try { await env.DB.prepare("ALTER TABLE custom_providers ADD COLUMN token_selection TEXT DEFAULT 'round-robin'").run(); } catch (e) {}
     try { await env.DB.prepare("ALTER TABLE custom_providers ADD COLUMN disabled_models TEXT DEFAULT '[]'").run(); } catch (e) {}
+    try { await env.DB.prepare("ALTER TABLE custom_providers ADD COLUMN credential_fields TEXT DEFAULT '[]'").run(); } catch (e) {}
+    try { await env.DB.prepare("ALTER TABLE custom_providers ADD COLUMN auth_style TEXT DEFAULT 'bearer'").run(); } catch (e) {}
   } catch (e) { console.error("DB Init Error:", e); }
 }
 
@@ -550,6 +587,15 @@ export default {
     }
 
     if (path === "/" || path === "/v1" || path === "/v1/sample") {
+      // Browsers opening the worker URL get the landing page; API clients
+      // asking for JSON keep the JSON status object. Only "/" negotiates —
+      // /v1 and /v1/sample always answer JSON.
+      const acceptsHtml = (request.headers.get("Accept") || "").includes("text/html");
+      if (path === "/" && acceptsHtml && (request.method === "GET" || request.method === "HEAD")) {
+        return new Response(landingHtml(url.host), {
+          headers: { "Content-Type": "text/html; charset=UTF-8", ...corsHeaders }
+        });
+      }
       return new Response(JSON.stringify({
         message: "CFRouter Gateway",
         version: "2.0",
@@ -639,7 +685,7 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
 
   // ── Fetch custom providers ──
   const { results: customProviders } = await env.DB.prepare(
-    "SELECT id, name, slug, base_url, tokens, token_selection, fetched_models FROM custom_providers WHERE enabled = 1"
+    "SELECT id, name, slug, base_url, tokens, token_selection, fetched_models, credential_fields, auth_style FROM custom_providers WHERE enabled = 1"
   ).all();
 
   // ── Build target list ──
@@ -655,18 +701,15 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
     if (customProviders) {
       for (const cp of customProviders) {
         if ((cp.slug || providerSlug(cp.name)) === slug) {
-          const tokens = parseTokens(cp.tokens);
-          const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
-          if (selectedToken) {
-            targets = [{
-              url: cp.base_url.replace(/\/$/, ""),
-              type: "custom",
-              token: selectedToken.value,
-              providerId: cp.id,
-              tokenIndex: selectedToken._originalIndex,
-            }];
+          const target = await selectProviderTarget(cp, env, { type: "custom" });
+          if (target) {
+            targets = [target];
             rewrittenModelName = actualModel;
             routedToProvider = true;
+          } else {
+            // Matched by slug but unusable: say which credential is missing
+            // rather than broadcasting `slug/model` to the general pool.
+            return credentialFailureResponse(providerUnusableReason(cp), "openai", corsHeaders);
           }
           break;
         }
@@ -692,17 +735,8 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
       );
     }
     for (const cp of customProviders) {
-      const tokens = parseTokens(cp.tokens);
-      const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
-      if (selectedToken) {
-        targets.push({
-          url: cp.base_url.replace(/\/$/, ""),
-          type: "custom",
-          token: selectedToken.value,
-          providerId: cp.id,
-          tokenIndex: selectedToken._originalIndex,
-        });
-      }
+      const target = await selectProviderTarget(cp, env, { type: "custom" });
+      if (target) targets.push(target);
     }
   }
 
@@ -715,16 +749,21 @@ async function proxyRequest(request, url, path, env, ctx, corsHeaders) {
   const needBodyRewrite = rewrittenModelName !== modelName && bodyText;
 
   for (const target of targets) {
+    if (target.missingFields?.length) {
+      lastError = { status: 400, body: credentialProblem(target) };
+      continue;
+    }
+
     let targetBaseUrl = target.url;
     if (target.type === "custom") {
       targetBaseUrl = targetBaseUrl.replace(/\/v1\/?$/, "");
     }
-    const targetUrl = targetBaseUrl + (path.startsWith("/") ? path : "/" + path) + url.search;
+    const targetUrl = appendCredentialQuery(
+      targetBaseUrl + (path.startsWith("/") ? path : "/" + path) + url.search, target
+    );
 
     const proxyHeaders = new Headers(headers);
-    if (target.token) {
-      proxyHeaders.set("Authorization", `Bearer ${target.token}`);
-    }
+    applyCredentialHeaders(proxyHeaders, target);
 
     let finalBuffer = requestBuffer;
     if (needBodyRewrite) {
@@ -964,10 +1003,14 @@ async function handleAnthropicRequest(request, url, env, ctx, corsHeaders) {
   const openaiBody = anthropicToOpenAI(body);
 
   // Resolve model and targets (reuse proxy logic)
-  const { targets, rewrittenModel, unknownSlug, availableSlugs } = await resolveModelAndTargets(env, openaiBody.model);
+  const { targets, rewrittenModel, unknownSlug, availableSlugs, credentialError } = await resolveModelAndTargets(env, openaiBody.model);
 
   if (unknownSlug) {
     return unknownModelResponse(unknownSlug, availableSlugs, "anthropic", corsHeaders);
+  }
+
+  if (credentialError) {
+    return credentialFailureResponse(credentialError, "anthropic", corsHeaders);
   }
 
   if (targets.length === 0) {
@@ -1032,10 +1075,14 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
   const openaiBody = geminiToOpenAI({ ...body, model });
 
   // Resolve model and targets
-  const { targets, rewrittenModel, unknownSlug, availableSlugs } = await resolveModelAndTargets(env, openaiBody.model);
+  const { targets, rewrittenModel, unknownSlug, availableSlugs, credentialError } = await resolveModelAndTargets(env, openaiBody.model);
 
   if (unknownSlug) {
     return unknownModelResponse(unknownSlug, availableSlugs, "gemini", corsHeaders);
+  }
+
+  if (credentialError) {
+    return credentialFailureResponse(credentialError, "gemini", corsHeaders);
   }
 
   if (targets.length === 0) {
@@ -1086,10 +1133,11 @@ async function handleGeminiRequest(request, url, env, ctx, corsHeaders, model, i
 async function resolveModelAndTargets(env, modelName) {
   let rewrittenModel = modelName;
   let unknownSlug = null;
+  let credentialError = null;
 
   // Fetch custom providers
   const { results: customProviders } = await env.DB.prepare(
-    "SELECT id, name, base_url, tokens, slug, token_selection, fetched_models FROM custom_providers WHERE enabled = 1"
+    "SELECT id, name, base_url, tokens, slug, token_selection, fetched_models, credential_fields, auth_style FROM custom_providers WHERE enabled = 1"
   ).all();
 
   let targets = [];
@@ -1104,18 +1152,14 @@ async function resolveModelAndTargets(env, modelName) {
     for (const cp of customProviders) {
       if ((cp.slug || providerSlug(cp.name)) === slug) {
         matched = true;
-        const tokens = parseTokens(cp.tokens);
-        const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
-        if (selectedToken) {
-          targets = [{
-            url: cp.base_url.replace(/\/$/, ""),
-            token: selectedToken.value,
-            providerId: cp.id,
-            tokenIndex: selectedToken._originalIndex,
-          }];
+        const target = await selectProviderTarget(cp, env);
+        if (target) {
+          target.type = "custom";
+          targets = [target];
           rewrittenModel = actualModel;
           break;
         }
+        credentialError = providerUnusableReason(cp);
       }
     }
     // Same rule as proxyRequest: a slug that matches nothing is a client mistake,
@@ -1125,22 +1169,37 @@ async function resolveModelAndTargets(env, modelName) {
   }
 
   // General pool fallback
-  if (targets.length === 0 && customProviders.length > 0 && !unknownSlug) {
+  if (targets.length === 0 && customProviders.length > 0 && !unknownSlug && !credentialError) {
     for (const cp of customProviders) {
-      const tokens = parseTokens(cp.tokens);
-      const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
-      if (selectedToken) {
-        targets.push({
-          url: cp.base_url.replace(/\/$/, ""),
-          token: selectedToken.value,
-          providerId: cp.id,
-          tokenIndex: selectedToken._originalIndex,
-        });
-      }
+      const target = await selectProviderTarget(cp, env, { type: "custom" });
+      if (target) targets.push(target);
     }
   }
 
-  return { targets, rewrittenModel, unknownSlug, availableSlugs: customProviders.map(cp => cp.slug || providerSlug(cp.name)) };
+  return {
+    targets, rewrittenModel, unknownSlug, credentialError,
+    availableSlugs: customProviders.map(cp => cp.slug || providerSlug(cp.name)),
+  };
+}
+
+// Why a provider that matched a slug could not serve the request. A provider
+// whose every token is missing a companion credential used to fall through to
+// the general pool and come back as "unknown provider slug", which is both
+// wrong and useless — the provider is right there, one field short.
+function providerUnusableReason(provider) {
+  const fields = parseCredentialFields(provider.credential_fields);
+  const tokens = parseTokens(provider.tokens);
+  if (tokens.length === 0) return `${provider.name} has no API tokens configured`;
+  const enabled = tokens.filter(t => t.enabled);
+  if (enabled.length === 0) return `${provider.name} has no enabled API tokens`;
+  const missing = new Set();
+  for (const t of enabled) {
+    for (const f of fields) if (f.required && !(t.extras || {})[f.key]) missing.add(f.label || f.key);
+  }
+  if (missing.size) {
+    return `${provider.name}: every enabled token is missing credential field(s): ${[...missing].join(", ")}`;
+  }
+  return `${provider.name} has no usable API tokens`;
 }
 
 // Does any enabled provider actually advertise this exact model id? Some
@@ -1204,13 +1263,16 @@ async function fetchUpstream(targets, openaiBody, method) {
   let lastUpstreamError = null; // most recent non-OK response from a provider
 
   for (const target of targets) {
-    let targetBaseUrl = target.url.replace(/\/v1\/?$/, "");
-    const targetUrl = targetBaseUrl + "/v1/chat/completions";
+    if (target.missingFields?.length) {
+      lastException = { status: 400, message: credentialProblem(target), providerId: target.providerId ?? null };
+      continue;
+    }
 
-    const headers = new Headers({
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${target.token}`
-    });
+    let targetBaseUrl = target.url.replace(/\/v1\/?$/, "");
+    const targetUrl = appendCredentialQuery(targetBaseUrl + "/v1/chat/completions", target);
+
+    const headers = new Headers({ "Content-Type": "application/json" });
+    applyCredentialHeaders(headers, target);
 
     try {
       const controller = new AbortController();
@@ -1276,6 +1338,22 @@ function unknownModelResponse(slug, availableSlugs, format, corsHeaders) {
 
   return new Response(JSON.stringify(body), {
     status: 404,
+    headers: { "Content-Type": "application/json", ...corsHeaders }
+  });
+}
+
+// The provider exists and was picked, but its credentials are incomplete. That
+// is a configuration problem on this gateway, not a bad model name, so it says
+// which field to fill in instead of sending the request somewhere else.
+function credentialFailureResponse(message, format, corsHeaders) {
+  const body = format === "gemini"
+    ? { error: { code: 400, message, status: "INVALID_ARGUMENT" } }
+    : format === "anthropic"
+      ? { type: "error", error: { type: "invalid_request_error", message } }
+      : { error: { message, type: "invalid_request_error", code: "invalid_credential" } };
+
+  return new Response(JSON.stringify(body), {
+    status: 400,
     headers: { "Content-Type": "application/json", ...corsHeaders }
   });
 }
@@ -2073,13 +2151,28 @@ async function handleAddProvider(request, env) {
   }
 
   const slug = slugRaw || providerSlug(name);
-  const tokens = tokensRaw.split("\n").map(t => t.trim()).filter(t => t.length > 0).map(t => ({ value: t, enabled: true, name: "" }));
+
+  // A catalog pick carries the companion credentials its provider needs
+  // (Cloudflare's account id, MiniMax's GroupId); the manual form can declare
+  // its own. Either way the fields drive how each pasted line is split.
+  const catalogEntry = PROVIDER_CATALOG.find(c => c.slug === (params.get("catalog_id") || "").trim());
+  const fields = catalogEntry?.fields
+    ? parseCredentialFields(JSON.stringify(catalogEntry.fields))
+    : parseCredentialFieldsForm(params.get("credential_fields"));
+  const authStyle = catalogEntry?.authStyle || (params.get("auth_style") || "").trim() || "bearer";
+
+  const parsedTokens = parseBulkTokens(tokensRaw, fields);
+  if (parsedTokens.error) return new Response(parsedTokens.error, { status: 400 });
+  const tokens = parsedTokens.tokens;
 
   let providerId = null;
   try {
     const result = await env.DB.prepare(
-      "INSERT INTO custom_providers (name, slug, base_url, tokens, enabled) VALUES (?, ?, ?, ?, 1)"
-    ).bind(name, slug, baseUrl, JSON.stringify(tokens)).run();
+      "INSERT INTO custom_providers (name, slug, base_url, tokens, enabled, credential_fields, auth_style) VALUES (?, ?, ?, ?, 1, ?, ?)"
+    ).bind(
+      name, slug, baseUrl, tokensToJSON(tokens),
+      JSON.stringify(fields), authStyle
+    ).run();
     providerId = result.meta?.last_row_id;
   } catch (e) {
     if (e.message?.includes("UNIQUE")) {
@@ -2095,13 +2188,23 @@ async function handleAddProvider(request, env) {
   let modelsError = "";
   if (providerId) {
     try {
-      let modelsUrl = baseUrl.replace(/\/$/, "");
+      // Build the target from the row we just wrote, so the model list is
+      // fetched with the same account id / headers a real request would use.
+      const target = await selectProviderTarget({
+        id: providerId, name, base_url: baseUrl,
+        tokens: tokensToJSON(tokens), token_selection: "round-robin",
+        credential_fields: JSON.stringify(fields), auth_style: authStyle,
+      }, env, { type: "custom" });
+      if (!target) throw new Error("No enabled tokens with complete credentials");
+      if (target.missingFields.length) throw new Error(credentialProblem(target));
+
+      let modelsUrl = target.url.replace(/\/$/, "");
       if (!modelsUrl.endsWith("/v1/models")) {
         modelsUrl = modelsUrl.replace(/\/v1\/?$/, "") + "/v1/models";
       }
-      const firstToken = tokens.find(t => t.enabled);
-      const fetchHeaders = { "Content-Type": "application/json" };
-      if (firstToken) fetchHeaders["Authorization"] = `Bearer ${firstToken.value}`;
+      modelsUrl = appendCredentialQuery(modelsUrl, target);
+      const fetchHeaders = new Headers({ "Content-Type": "application/json" });
+      applyCredentialHeaders(fetchHeaders, target);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
       const resp = await fetch(modelsUrl, { headers: fetchHeaders, signal: controller.signal });
@@ -2141,19 +2244,57 @@ async function handleEditProvider(request, env) {
   const name = params.get("name")?.trim();
   const slugRaw = params.get("slug")?.trim();
   const baseUrl = params.get("base_url")?.trim();
-  const tokensRaw = params.get("tokens")?.trim();
 
   if (!id || !name || !baseUrl) {
     return new Response("Missing required fields", { status: 400 });
   }
 
   const slug = slugRaw || providerSlug(name);
-  const tokens = tokensRaw ? tokensRaw.split("\n").map(t => t.trim()).filter(t => t.length > 0).map(t => ({ value: t, enabled: true, name: "" })) : [];
+
+  // Only the fields the form actually sent are written. The Edit Provider modal
+  // has no `tokens` field, and rebuilding from null used to write `tokens = '[]'`
+  // — so renaming a provider silently deleted every API key on it.
+  const sets = ["name = ?", "slug = ?", "base_url = ?"];
+  const binds = [name, slug, baseUrl];
+
+  const fieldsRaw = params.get("credential_fields");
+  const fields = fieldsRaw === null
+    ? parseCredentialFieldsForm(null)
+    : parseCredentialFieldsForm(fieldsRaw);
+  if (fieldsRaw !== null) {
+    sets.push("credential_fields = ?");
+    binds.push(JSON.stringify(fields));
+  }
+
+  const authStyle = params.get("auth_style");
+  if (authStyle !== null && authStyle.trim() !== "") {
+    sets.push("auth_style = ?");
+    binds.push(authStyle.trim());
+  }
+
+  const tokensRaw = params.get("tokens");
+  if (tokensRaw !== null && tokensRaw.trim() !== "") {
+    // Parsing needs the field list; when the form did not resend it, use what
+    // the provider already has.
+    let declared = fields;
+    if (fieldsRaw === null) {
+      const { results } = await env.DB.prepare(
+        "SELECT credential_fields FROM custom_providers WHERE id = ?"
+      ).bind(parseInt(id)).all();
+      declared = parseCredentialFields(results?.[0]?.credential_fields);
+    }
+    const parsed = parseBulkTokens(tokensRaw, declared);
+    if (parsed.error) return new Response(parsed.error, { status: 400 });
+    sets.push("tokens = ?");
+    binds.push(tokensToJSON(parsed.tokens));
+  }
+
+  binds.push(parseInt(id));
 
   try {
     await env.DB.prepare(
-      "UPDATE custom_providers SET name = ?, slug = ?, base_url = ?, tokens = ? WHERE id = ?"
-    ).bind(name, slug, baseUrl, JSON.stringify(tokens), parseInt(id)).run();
+      `UPDATE custom_providers SET ${sets.join(", ")} WHERE id = ?`
+    ).bind(...binds).run();
   } catch (e) {
     if (e.message?.includes("UNIQUE")) {
       return new Response("A provider with this URL already exists", { status: 409 });
@@ -2212,27 +2353,37 @@ async function handleFetchModels(request, env) {
   if (!providerUrl) return new Response("Missing URL", { status: 400 });
 
   try {
-    let modelsUrl = providerUrl.replace(/\/$/, "");
+    // A stored provider's own base_url wins over the one the form posted: it is
+    // what the request will really go to, and it is where a per-token credential
+    // (Cloudflare's account id) has already been substituted.
+    let baseUrl = providerUrl;
+    let target = null;
+    if (providerType === "custom" && providerId) {
+      try {
+        const { results } = await env.DB.prepare(
+          "SELECT id, name, base_url, tokens, token_selection, credential_fields, auth_style FROM custom_providers WHERE id = ?"
+        ).bind(parseInt(providerId)).all();
+        if (results && results[0]) {
+          target = await selectProviderTarget(results[0], env, { type: "custom" });
+          if (target) baseUrl = target.url;
+        }
+      } catch (e) { /* continue with the posted URL */ }
+    }
+
+    if (target?.missingFields.length) {
+      return new Response(JSON.stringify({ error: credentialProblem(target) }), {
+        status: 400, headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    let modelsUrl = baseUrl.replace(/\/$/, "");
     if (!modelsUrl.endsWith("/v1/models")) {
       modelsUrl = modelsUrl.replace(/\/v1\/?$/, "") + "/v1/models";
     }
+    if (target) modelsUrl = appendCredentialQuery(modelsUrl, target);
 
-    // Look up provider token for custom providers
-    let authToken = null;
-    if (providerType === "custom" && providerId) {
-      try {
-        const { results } = await env.DB.prepare("SELECT tokens, token_selection FROM custom_providers WHERE id = ?")
-          .bind(parseInt(providerId)).all();
-        if (results && results[0]) {
-          const tokens = parseTokens(results[0].tokens);
-          const selectedToken = await selectToken(tokens, results[0].token_selection || 'round-robin', parseInt(providerId), env);
-          if (selectedToken) authToken = selectedToken.value;
-        }
-      } catch (e) { /* continue without token */ }
-    }
-
-    const headers = { "Content-Type": "application/json" };
-    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (target) applyCredentialHeaders(headers, target);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -2390,35 +2541,40 @@ async function handleTestModel(request, env) {
   }
 
   try {
-    const { results } = await env.DB.prepare("SELECT base_url, tokens, token_selection FROM custom_providers WHERE id = ?")
-      .bind(providerId).all();
+    const { results } = await env.DB.prepare(
+      "SELECT id, name, base_url, tokens, token_selection, credential_fields, auth_style FROM custom_providers WHERE id = ?"
+    ).bind(providerId).all();
     if (!results || !results[0]) {
       return new Response(JSON.stringify({ ok: false, error: "Provider not found" }), {
         status: 404, headers: { "Content-Type": "application/json" }
       });
     }
 
-    const p = results[0];
-    const tokens = parseTokens(p.tokens);
-    const selectedToken = await selectToken(tokens, p.token_selection || 'round-robin', providerId, env);
-
-    if (!selectedToken) {
-      return new Response(JSON.stringify({ ok: false, error: "No enabled tokens" }), {
+    const target = await selectProviderTarget(results[0], env, { type: "custom" });
+    if (!target) {
+      return new Response(JSON.stringify({ ok: false, error: "No enabled tokens with complete credentials" }), {
+        status: 400, headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target.missingFields.length) {
+      return new Response(JSON.stringify({ ok: false, error: credentialProblem(target) }), {
         status: 400, headers: { "Content-Type": "application/json" }
       });
     }
 
-    let targetUrl = p.base_url.replace(/\/$/, "").replace(/\/v1\/?$/, "") + "/v1/chat/completions";
+    const targetUrl = appendCredentialQuery(
+      target.url.replace(/\/v1\/?$/, "") + "/v1/chat/completions", target
+    );
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
+    const testHeaders = new Headers({ "Content-Type": "application/json" });
+    applyCredentialHeaders(testHeaders, target);
+
     const resp = await fetch(targetUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${selectedToken.value}`
-      },
+      headers: testHeaders,
       body: JSON.stringify({
         model: modelId,
         messages: [{ role: "user", content: testPrompt }],
@@ -2502,14 +2658,14 @@ async function handlePlayground(request, env) {
     // cp.base_url — a client-supplied URL is never used, which is what keeps
     // this endpoint from being an SSRF hole.
     const { results: providers } = await env.DB.prepare(
-      "SELECT id, name, base_url, tokens, token_selection FROM custom_providers WHERE enabled = 1"
+      "SELECT id, name, base_url, tokens, token_selection, credential_fields, auth_style FROM custom_providers WHERE enabled = 1"
     ).all();
     const cp = (providers || []).find(p => (p.slug || providerSlug(p.name)) === slug);
     if (!cp) return jsonError("Unknown provider slug: " + slug, 400);
 
-    const tokens = parseTokens(cp.tokens);
-    const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
-    if (!selectedToken) return jsonError("No enabled tokens for provider " + cp.name, 400);
+    const target = await selectProviderTarget(cp, env, { type: "custom" });
+    if (!target) return jsonError("No enabled tokens with complete credentials for provider " + cp.name, 400);
+    if (target.missingFields.length) return jsonError(credentialProblem(target), 400);
 
     // Build the upstream payload server-side; clamp anything numeric
     const outgoing = [];
@@ -2533,7 +2689,12 @@ async function handlePlayground(request, env) {
       openaiBody.top_p = clampNumber(body.top_p, 0.01, 1, 1);
     }
 
-    const targetUrl = cp.base_url.replace(/\/$/, "").replace(/\/v1\/?$/, "") + "/v1/chat/completions";
+    const targetUrl = appendCredentialQuery(
+      target.url.replace(/\/v1\/?$/, "") + "/v1/chat/completions", target
+    );
+
+    const playgroundHeaders = new Headers({ "Content-Type": "application/json" });
+    applyCredentialHeaders(playgroundHeaders, target);
 
     // request.signal lets the browser's Stop button cancel the upstream call
     const controller = new AbortController();
@@ -2545,10 +2706,7 @@ async function handlePlayground(request, env) {
     try {
       upstream = await fetch(targetUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${selectedToken.value}`
-        },
+        headers: playgroundHeaders,
         body: JSON.stringify(openaiBody),
         signal: controller.signal
       });
@@ -2559,7 +2717,7 @@ async function handlePlayground(request, env) {
     }
 
     // The token was consumed either way, so keep the least-used strategy honest
-    await trackTokenUsage(cp.id, selectedToken._originalIndex, env).catch(() => {});
+    await trackTokenUsage(cp.id, target.tokenIndex, env).catch(() => {});
 
     if (!upstream.ok) {
       clearTimeout(timeoutId);
@@ -2614,22 +2772,24 @@ async function handleFetchAllModels(env) {
 
   // Fetch from custom providers
   const { results: customProviders } = await env.DB.prepare(
-    "SELECT id, name, base_url, tokens, token_selection FROM custom_providers WHERE enabled = 1"
+    "SELECT id, name, base_url, tokens, token_selection, credential_fields, auth_style FROM custom_providers WHERE enabled = 1"
   ).all();
 
   if (customProviders) {
     for (const cp of customProviders) {
       try {
-        let modelsUrl = cp.base_url.replace(/\/$/, "");
+        const target = await selectProviderTarget(cp, env, { type: "custom" });
+        if (!target) { results[cp.name] = { error: "No enabled tokens with complete credentials" }; continue; }
+        if (target.missingFields.length) { results[cp.name] = { error: credentialProblem(target) }; continue; }
+
+        let modelsUrl = target.url.replace(/\/$/, "");
         if (!modelsUrl.endsWith("/v1/models")) {
           modelsUrl = modelsUrl.replace(/\/v1\/?$/, "") + "/v1/models";
         }
+        modelsUrl = appendCredentialQuery(modelsUrl, target);
 
-        // Get enabled token for this provider
-        const tokens = parseTokens(cp.tokens);
-        const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
-        const headers = {};
-        if (selectedToken) headers["Authorization"] = `Bearer ${selectedToken.value}`;
+        const headers = new Headers({ "Content-Type": "application/json" });
+        applyCredentialHeaders(headers, target);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -2668,7 +2828,7 @@ async function handleModelsEndpoint(env, corsHeaders) {
   // Custom provider models (prefixed with provider slug)
   try {
     const { results: customProviders } = await env.DB.prepare(
-      "SELECT id, name, slug, base_url, tokens, fetched_models, token_selection, disabled_models FROM custom_providers WHERE enabled = 1"
+      "SELECT id, name, slug, base_url, tokens, fetched_models, token_selection, disabled_models, credential_fields, auth_style FROM custom_providers WHERE enabled = 1"
     ).all();
 
     if (customProviders) {
@@ -2681,15 +2841,17 @@ async function handleModelsEndpoint(env, corsHeaders) {
         // Try to fetch fresh models with full details from the provider
         let liveModels = cachedModels;
         try {
-          let modelsUrl = cp.base_url.replace(/\/$/, "");
+          const target = await selectProviderTarget(cp, env, { type: "custom" });
+          if (!target || target.missingFields.length) throw new Error("no usable credential");
+
+          let modelsUrl = target.url.replace(/\/$/, "");
           if (!modelsUrl.endsWith("/v1/models")) {
             modelsUrl = modelsUrl.replace(/\/v1\/?$/, "") + "/v1/models";
           }
-          // Get enabled token for auth
-          const tokens = parseTokens(cp.tokens);
-          const selectedToken = await selectToken(tokens, cp.token_selection || 'round-robin', cp.id, env);
-          const fetchHeaders = {};
-          if (selectedToken) fetchHeaders["Authorization"] = `Bearer ${selectedToken.value}`;
+          modelsUrl = appendCredentialQuery(modelsUrl, target);
+
+          const fetchHeaders = new Headers({ "Content-Type": "application/json" });
+          applyCredentialHeaders(fetchHeaders, target);
 
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -2802,10 +2964,35 @@ async function handleEditToken(request, env) {
 
   tokens[tokenIndex].value = tokenValue;
   tokens[tokenIndex].name = tokenName;
+
+  // One `extra_<key>` input per declared credential field. A field the modal did
+  // not render is left as it was; one it cleared is dropped rather than kept
+  // stale, since that is what makes the token unusable at routing time.
+  const posted = credentialExtrasFromParams(params);
+  if (Object.keys(posted).length > 0) {
+    const extras = { ...tokens[tokenIndex].extras };
+    for (const [key, value] of Object.entries(posted)) {
+      if (value) extras[key] = value;
+      else delete extras[key];
+    }
+    tokens[tokenIndex].extras = extras;
+  }
+
   await env.DB.prepare("UPDATE custom_providers SET tokens = ? WHERE id = ?")
     .bind(tokensToJSON(tokens), providerId).run();
 
   return new Response(null, { status: 302, headers: { "Location": "/admin/providers" } });
+}
+
+// Add/Edit Token modals name each companion credential input `extra_<key>`, so
+// the handlers do not need the provider's field list to read them back.
+function credentialExtrasFromParams(params) {
+  const extras = {};
+  for (const [name, value] of params) {
+    if (!name.startsWith("extra_")) continue;
+    extras[name.slice(6)] = String(value || "").trim();
+  }
+  return extras;
 }
 
 async function handleAddToken(request, env) {
@@ -2820,7 +3007,12 @@ async function handleAddToken(request, env) {
   if (!results || !results.length) return new Response("Provider not found", { status: 404 });
 
   const tokens = parseTokens(results[0].tokens);
-  tokens.push({ value: tokenValue, enabled: true, name: tokenName });
+  tokens.push({
+    value: tokenValue,
+    enabled: true,
+    name: tokenName,
+    extras: credentialExtrasFromParams(params),
+  });
   await env.DB.prepare("UPDATE custom_providers SET tokens = ? WHERE id = ?")
     .bind(tokensToJSON(tokens), providerId).run();
 
@@ -2878,14 +3070,14 @@ async function handleCreateToken(request, env) {
   p{color:#94a3b8;font-size:13px;margin-bottom:20px}
   .key-box{background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:16px;margin-bottom:20px;word-break:break-all;font-family:monospace;font-size:13px;color:#10b981}
   .warning{background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:12px;margin-bottom:20px;font-size:12px;color:#f59e0b}
-  .btn{padding:10px 24px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;text-decoration:none;display:inline-block}
+  .btn{padding:10px 24px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:linear-gradient(140deg,#38bdf8,#f472b6 55%,#2dd4bf);color:#fff;text-decoration:none;display:inline-block}
   .btn:hover{opacity:0.9}
 </style>
 </head>
 <body>
 <div class="card">
   <h2>✅ Token Created</h2>
-  <p>Your new API token for <strong>${name}</strong></p>
+  <p>Your new API token for <strong>${escapeHtml(name)}</strong></p>
   <div class="key-box" id="key">${rawKey}</div>
   <div class="warning">⚠️ Copy this key now. It will NOT be shown again.</div>
   <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('key').textContent).then(()=>this.textContent='Copied!')">Copy Key</button>
@@ -2930,6 +3122,166 @@ async function handleRenameTokenKey(request, env) {
   return new Response(null, { status: 302, headers: { "Location": "/admin/tokens" } });
 }
 
+// ─── Public Landing Page ─────────────────────────────────────────────────
+// Served at "/" for browsers (requests with Accept: text/html). API clients
+// asking for JSON still get the JSON status object from the root handler.
+function landingHtml(host) {
+  const h = escapeHtml(host);
+  const base = `https://${h}/v1`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CFRouter — AI Gateway</title>
+<meta name="description" content="CFRouter is a self-hosted AI gateway on Cloudflare Workers. One OpenAI-compatible endpoint for every provider.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%2338bdf8'/><path d='M16 7l8 9-8 9-8-9z' fill='%2306080f'/></svg>">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#06080f;color:#e2e8f0;min-height:100vh;line-height:1.6}
+  body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 20% 0%,rgba(56,189,248,0.12) 0%,transparent 55%),radial-gradient(ellipse at 85% 15%,rgba(244,114,182,0.09) 0%,transparent 55%),radial-gradient(ellipse at 50% 100%,rgba(45,212,191,0.07) 0%,transparent 55%);pointer-events:none;z-index:0}
+  a{color:#7dd3fc}
+  .wrap{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:28px 22px 60px}
+  .top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:56px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:12px}
+  .mark{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:21px;background:linear-gradient(140deg,#38bdf8,#f472b6 55%,#2dd4bf);box-shadow:0 8px 24px rgba(59,130,246,0.3)}
+  .brand strong{display:block;font-size:17px;letter-spacing:-0.3px}
+  .brand span{display:block;font-size:11px;color:#64748b;letter-spacing:1.5px;text-transform:uppercase}
+  .top-right{display:flex;align-items:center;gap:10px}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:#6ee7b7;background:rgba(46,230,168,0.08);border:1px solid rgba(46,230,168,0.25);padding:8px 14px;border-radius:99px}
+  .pill i{width:7px;height:7px;border-radius:50%;background:#2ee6a8;box-shadow:0 0 10px #2ee6a8}
+  .btn{display:inline-block;padding:11px 22px;border-radius:12px;font-size:14px;font-weight:600;text-decoration:none;color:#f1f5f9;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);transition:all 0.2s;cursor:pointer;font-family:inherit}
+  .btn:hover{border-color:rgba(255,255,255,0.2);transform:translateY(-1px)}
+  .btn.pri{background:linear-gradient(135deg,#38bdf8,#f472b6);border:none;color:#fff}
+  .btn.pri:hover{box-shadow:0 8px 24px rgba(59,130,246,0.35)}
+  .hero{text-align:center;margin-bottom:56px}
+  .hero h1{font-size:clamp(30px,5.4vw,48px);font-weight:800;letter-spacing:-1.5px;line-height:1.12;margin-bottom:16px;color:#f8fafc}
+  .hero h1 .grad{background:linear-gradient(100deg,#38bdf8,#f472b6 55%,#2dd4bf);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:#94a3b8;font-size:16px;max-width:620px;margin:0 auto 28px}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:26px}
+  .baseurl{display:inline-flex;align-items:center;gap:10px;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.09);border-radius:12px;padding:9px 9px 9px 16px;font-size:13px;max-width:100%}
+  .baseurl span{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+  .baseurl code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#2dd4bf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mini-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .mini-btn:hover{background:rgba(255,255,255,0.1)}
+  section{margin-bottom:52px}
+  h2{font-size:20px;font-weight:700;letter-spacing:-0.4px;color:#f8fafc;margin-bottom:6px}
+  .sec-sub{color:#64748b;font-size:13.5px;margin-bottom:20px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+  .card{display:block;background:rgba(15,20,35,0.7);border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px;text-decoration:none;transition:all 0.2s}
+  .card:hover{border-color:rgba(56,189,248,0.4);transform:translateY(-2px)}
+  .card .ico{font-size:22px;margin-bottom:10px}
+  .card strong{display:block;font-size:14px;color:#f1f5f9;margin-bottom:4px}
+  .card p{font-size:12.5px;color:#7d8aa5;line-height:1.5}
+  .card code{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#2dd4bf}
+  .step{display:flex;gap:16px;background:rgba(15,20,35,0.7);border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:22px;margin-bottom:12px}
+  .step .n{flex-shrink:0;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff;background:linear-gradient(135deg,#38bdf8,#f472b6)}
+  .step h3{font-size:15px;color:#f1f5f9;margin-bottom:6px}
+  .step p{font-size:13.5px;color:#94a3b8;margin-bottom:10px}
+  .step p code,.note code{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#2dd4bf;background:rgba(45,212,191,0.08);padding:2px 7px;border-radius:6px}
+  pre{background:#0a0f1e;border:1px solid rgba(255,255,255,0.09);border-radius:10px;padding:14px 16px;overflow:auto;font-size:12.5px;margin-bottom:10px}
+  pre code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#a5e8ff;white-space:pre}
+  .note{background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.22);border-radius:14px;padding:18px 20px;font-size:13px;color:#93c5fd}
+  .note strong{color:#bfdbfe}
+  .note ul{margin:8px 0 0 18px}
+  .note li{margin-bottom:4px}
+  footer{text-align:center;color:#334155;font-size:12px;padding-top:8px}
+  @media(max-width:560px){.top{margin-bottom:40px}.step{padding:18px 16px}pre{font-size:11.5px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="mark">⚡</div>
+      <div><strong>CFRouter</strong><span>AI Gateway</span></div>
+    </div>
+    <div class="top-right">
+      <span class="pill"><i></i>Running</span>
+      <a class="btn" href="/admin">Admin Panel</a>
+    </div>
+  </header>
+
+  <div class="hero">
+    <h1>One endpoint for <span class="grad">every AI provider.</span></h1>
+    <p>CFRouter is a self-hosted gateway on Cloudflare Workers. Point your app or coding agent at one OpenAI-compatible URL — it routes, load-balances and observes traffic across all your providers.</p>
+    <div class="cta">
+      <a class="btn pri" href="/admin">Open Admin Panel</a>
+      <a class="btn" href="/docs">API Docs</a>
+    </div>
+    <div class="baseurl"><span>Base URL</span><code id="base">${base}</code><button class="mini-btn" onclick="copy('base',this)">Copy</button></div>
+  </div>
+
+  <section>
+    <h2>Start here</h2>
+    <p class="sec-sub">The pages you will use most — click any card to open it.</p>
+    <div class="grid">
+      <a class="card" href="/admin"><div class="ico">📊</div><strong>Dashboard</strong><p>Traffic, requests and analytics at a glance.</p></a>
+      <a class="card" href="/admin/providers"><div class="ico">🔌</div><strong>Providers</strong><p>Connect API keys and manage upstreams.</p></a>
+      <a class="card" href="/admin/tokens"><div class="ico">🔑</div><strong>API Tokens</strong><p>Create the <code>sk-…</code> keys your apps use.</p></a>
+      <a class="card" href="/admin/models"><div class="ico">🧩</div><strong>Models</strong><p>Enable, hide and alias router models.</p></a>
+      <a class="card" href="/admin/playground"><div class="ico">💬</div><strong>Playground</strong><p>Try a model right in the browser.</p></a>
+      <a class="card" href="/docs"><div class="ico">📖</div><strong>API Docs</strong><p>Full endpoint reference with examples.</p></a>
+      <a class="card" href="/v1/models"><div class="ico">📋</div><strong>Models (JSON)</strong><p>Live list of routable models.</p></a>
+      <a class="card" href="/v1/health"><div class="ico">🩺</div><strong>Health</strong><p>Gateway and provider status.</p></a>
+    </div>
+  </section>
+
+  <section>
+    <h2>Use the router in 3 steps</h2>
+    <p class="sec-sub">No install needed — the router is already running at this URL.</p>
+    <div class="step">
+      <div class="n">1</div>
+      <div>
+        <h3>Create an API token</h3>
+        <p>Open <a href="/admin/tokens">Tokens</a> in the admin panel, create a token and copy it. Gateway tokens start with <code>sk-</code> — keep yours secret.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="n">2</div>
+      <div style="flex:1;min-width:0">
+        <h3>List your models</h3>
+        <p>Every model is named <code>provider/model</code>, e.g. <code>openai/gpt-4o</code>. See yours live:</p>
+        <pre><code id="c1">curl ${base}/models</code></pre>
+        <button class="mini-btn" onclick="copy('c1',this)">Copy</button>
+      </div>
+    </div>
+    <div class="step">
+      <div class="n">3</div>
+      <div style="flex:1;min-width:0">
+        <h3>Send a chat request</h3>
+        <p>Any OpenAI-compatible client works — just swap the base URL and model:</p>
+        <pre><code id="c2">curl -X POST ${base}/chat/completions \\
+  -H "Authorization: Bearer sk-YOUR-TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"openai/gpt-4o","messages":[{"role":"user","content":"Hello!"}]}'</code></pre>
+        <button class="mini-btn" onclick="copy('c2',this)">Copy</button>
+      </div>
+    </div>
+    <div class="note">
+      <strong>One key, three dialects.</strong> Your token works on every endpoint — send it as <code>Authorization: Bearer …</code>, <code>x-api-key</code> or <code>x-goog-api-key</code>.
+      <ul>
+        <li><code>POST /v1/chat/completions</code> — OpenAI dialect (Cline, Continue, OpenAI SDK)</li>
+        <li><code>POST /v1/messages</code> — Anthropic dialect (Claude Code, Anthropic SDK)</li>
+        <li><code>POST /v1beta/models/…:generateContent</code> — Gemini dialect (Gemini SDK)</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>CFRouter Gateway &middot; Powered by Cloudflare Workers</footer>
+</div>
+<script>
+function copy(id,btn){
+  var t=document.getElementById(id).innerText;
+  function done(){var o=btn.textContent;btn.textContent='Copied!';setTimeout(function(){btn.textContent=o;},1500);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,done);}else{done();}
+}
+</script>
+</body>
+</html>`;
+}
+
+
 // ─── Setup Wizard Page ──────────────────────────────────────────────────
 
 function setupHtml(errorMsg) {
@@ -2947,11 +3299,11 @@ function setupHtml(errorMsg) {
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#06080f;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
-  body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 30% 20%,rgba(56,189,248,0.06) 0%,transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(139,92,246,0.05) 0%,transparent 50%);pointer-events:none;z-index:0}
+  body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 20% 0%,rgba(56,189,248,0.14) 0%,transparent 55%),radial-gradient(ellipse at 85% 15%,rgba(244,114,182,0.1) 0%,transparent 55%),radial-gradient(ellipse at 50% 100%,rgba(45,212,191,0.08) 0%,transparent 55%);pointer-events:none;z-index:0}
   .setup-wrap{position:relative;z-index:1;width:100%;max-width:460px;margin:20px}
   .setup-card{background:rgba(15,20,35,0.8);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:44px 36px;box-shadow:0 25px 60px rgba(0,0,0,0.5)}
   .logo{text-align:center;margin-bottom:32px}
-  .logo-icon{width:52px;height:52px;margin:0 auto 16px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 8px 24px rgba(59,130,246,0.3)}
+  .logo-icon{width:52px;height:52px;margin:0 auto 16px;background:linear-gradient(140deg,#38bdf8,#f472b6 55%,#2dd4bf);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 8px 24px rgba(59,130,246,0.3)}
   .logo h1{font-size:22px;font-weight:700;color:#f8fafc;letter-spacing:-0.5px}
   .logo p{font-size:12px;color:#64748b;margin-top:6px;letter-spacing:0.3px}
   .field{margin-bottom:20px}
@@ -2960,7 +3312,7 @@ function setupHtml(errorMsg) {
   .field input:focus{border-color:rgba(59,130,246,0.5);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
   .field input::placeholder{color:#475569}
   .field .hint{font-size:11px;color:#475569;margin-top:6px}
-  .btn-setup{width:100%;padding:13px;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;letter-spacing:0.3px}
+  .btn-setup{width:100%;padding:13px;background:linear-gradient(135deg,#38bdf8,#f472b6);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;letter-spacing:0.3px}
   .btn-setup:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(59,130,246,0.3)}
   .btn-setup:active{transform:translateY(0)}
   .error{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:12px 16px;margin-bottom:22px;font-size:13px;color:#fca5a5;display:flex;align-items:center;gap:8px}
@@ -2981,7 +3333,7 @@ function setupHtml(errorMsg) {
       <strong>Welcome!</strong> This appears to be your first time running CFRouter.<br>
       Please set your <strong>Admin Password</strong> and <strong>Session Secret</strong> to continue.
     </div>
-    ${errorMsg ? `<div class="error"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>${errorMsg}</div>` : ''}
+    ${errorMsg ? `<div class="error"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>${escapeHtml(errorMsg)}</div>` : ''}
     <form method="POST" action="/setup">
       <div class="field">
         <label>Admin Password</label>
@@ -3017,11 +3369,11 @@ function loginHtml(errorMsg) {
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#06080f;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
-  body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 30% 20%,rgba(56,189,248,0.06) 0%,transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(139,92,246,0.05) 0%,transparent 50%);pointer-events:none;z-index:0}
+  body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 20% 0%,rgba(56,189,248,0.14) 0%,transparent 55%),radial-gradient(ellipse at 85% 15%,rgba(244,114,182,0.1) 0%,transparent 55%),radial-gradient(ellipse at 50% 100%,rgba(45,212,191,0.08) 0%,transparent 55%);pointer-events:none;z-index:0}
   .login-wrap{position:relative;z-index:1;width:100%;max-width:400px;margin:20px}
   .login-card{background:rgba(15,20,35,0.8);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:44px 36px;box-shadow:0 25px 60px rgba(0,0,0,0.5)}
   .logo{text-align:center;margin-bottom:36px}
-  .logo-icon{width:52px;height:52px;margin:0 auto 16px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 8px 24px rgba(59,130,246,0.3)}
+  .logo-icon{width:52px;height:52px;margin:0 auto 16px;background:linear-gradient(140deg,#38bdf8,#f472b6 55%,#2dd4bf);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 8px 24px rgba(59,130,246,0.3)}
   .logo h1{font-size:22px;font-weight:700;color:#f8fafc;letter-spacing:-0.5px}
   .logo p{font-size:12px;color:#64748b;margin-top:6px;letter-spacing:0.3px}
   .field{margin-bottom:22px}
@@ -3029,7 +3381,7 @@ function loginHtml(errorMsg) {
   .field input{width:100%;padding:13px 16px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;color:#f1f5f9;font-size:14px;outline:none;transition:all 0.2s}
   .field input:focus{border-color:rgba(59,130,246,0.5);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
   .field input::placeholder{color:#475569}
-  .btn-login{width:100%;padding:13px;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;letter-spacing:0.3px}
+  .btn-login{width:100%;padding:13px;background:linear-gradient(135deg,#38bdf8,#f472b6);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;letter-spacing:0.3px}
   .btn-login:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(59,130,246,0.3)}
   .btn-login:active{transform:translateY(0)}
   .error{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:12px 16px;margin-bottom:22px;font-size:13px;color:#fca5a5;display:flex;align-items:center;gap:8px}
@@ -3044,7 +3396,7 @@ function loginHtml(errorMsg) {
       <h1>CFRouter</h1>
       <p>Gateway Control Center</p>
     </div>
-    ${errorMsg ? `<div class="error"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>${errorMsg}</div>` : ''}
+    ${errorMsg ? `<div class="error"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>${escapeHtml(errorMsg)}</div>` : ''}
     <form method="POST" action="/admin/login">
       <div class="field">
         <label>Password</label>
@@ -3062,241 +3414,380 @@ function loginHtml(errorMsg) {
 // ─── Admin Dashboard Layout ──────────────────────────────────────────────
 
 function adminLayout(title, activeTab, content) {
+  const navItem = (tab, href, label, icon) =>
+    `<a href="${href}" class="nav-item ${activeTab === tab ? 'active' : ''}">${icon}<span>${label}</span></a>`;
+  const tabItem = (tab, href, label, icon) =>
+    `<a href="${href}" class="${activeTab === tab ? 'on' : ''}" title="${label}">${icon}${label}</a>`;
+  const icoAnalytics = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>';
+  const icoHealth = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>';
+  const icoProviders = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>';
+  const icoModels = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>';
+  const icoPlayground = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  const icoTokens = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>';
+  const icoDocs = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
+  const icoOut = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="prism">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${title} - CFRouter</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#06080f">
+<title>${escapeHtml(title)} - CFRouter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   :root{
+    --bg:#06080f;
+    --panel:rgba(17,22,38,0.62);
+    --panel-solid:#111626;
+    --panel-hi:rgba(26,33,54,0.85);
+    --line:rgba(255,255,255,0.07);
+    --line-strong:rgba(255,255,255,0.13);
+    --ink:#eef2f9;
+    --ink-2:#93a0b8;
+    --ink-3:#5a6784;
+    --blue:#38bdf8;
+    --violet:#f472b6;
+    --cyan:#2dd4bf;
+    --green:#2ee6a8;
+    --amber:#ffb020;
+    --rose:#ff5c78;
+    --r-sm:10px; --r:14px; --r-lg:20px; --r-xl:26px;
+    --shadow:0 20px 50px -12px rgba(0,0,0,0.65);
+    --ease:cubic-bezier(0.4,0,0.2,1);
+    --nav-w:256px;
     --bg-primary:#06080f;
-    --bg-secondary:rgba(15,20,35,0.7);
-    --bg-card:rgba(15,20,35,0.6);
-    --bg-card-hover:rgba(20,25,45,0.8);
-    --bg-input:rgba(255,255,255,0.03);
-    --border-subtle:rgba(255,255,255,0.06);
-    --border-medium:rgba(255,255,255,0.1);
-    --border-active:rgba(59,130,246,0.4);
-    --text-primary:#f1f5f9;
-    --text-secondary:#94a3b8;
-    --text-muted:#475569;
-    --accent-blue:#3b82f6;
+    --bg-secondary:rgba(17,22,38,0.8);
+    --bg-card:rgba(17,22,38,0.6);
+    --bg-card-hover:rgba(26,33,54,0.8);
+    --bg-input:rgba(255,255,255,0.04);
+    --border-subtle:rgba(255,255,255,0.07);
+    --border-medium:rgba(255,255,255,0.13);
+    --border-active:rgba(56,189,248,0.5);
+    --text-primary:#eef2f9;
+    --text-secondary:#93a0b8;
+    --text-muted:#5a6784;
+    --accent-blue:#38bdf8;
     --accent-purple:#8b5cf6;
-    --accent-green:#10b981;
-    --accent-amber:#f59e0b;
-    --accent-rose:#f43f5e;
-    --accent-cyan:#06b6d4;
-    --glass-bg:rgba(15,20,35,0.8);
-    --glass-border:rgba(255,255,255,0.06);
-    --radius:12px;
-    --radius-lg:16px;
-    --radius-xl:20px;
-    --shadow-card:0 4px 24px rgba(0,0,0,0.3);
-    --shadow-glow:0 0 40px rgba(59,130,246,0.08);
+    --accent-green:#2ee6a8;
+    --accent-amber:#ffb020;
+    --accent-rose:#ff5c78;
+    --accent-cyan:#2dd4bf;
+    --accent:#38bdf8;
+    --glass-bg:rgba(17,22,38,0.8);
+    --glass-border:rgba(255,255,255,0.07);
+    --radius:14px;
+    --radius-lg:20px;
+    --radius-xl:26px;
+    --shadow-card:0 20px 50px -12px rgba(0,0,0,0.65);
+    --shadow-glow:0 8px 22px -8px rgba(56,189,248,0.85);
     --transition:all 0.2s cubic-bezier(0.4,0,0.2,1);
   }
-  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg-primary);color:var(--text-primary);min-height:100vh;overflow-x:hidden}
-  body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at 20% 0%,rgba(59,130,246,0.04) 0%,transparent 50%),radial-gradient(ellipse at 80% 100%,rgba(139,92,246,0.03) 0%,transparent 50%);pointer-events:none;z-index:0}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+  html{-webkit-text-size-adjust:100%}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+  ::selection{background:rgba(56,189,248,0.35)}
+  :focus-visible{outline:2px solid rgba(56,189,248,0.65);outline-offset:2px;border-radius:6px}
+  .aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .aurora i{position:absolute;display:block;border-radius:50%;filter:blur(90px);opacity:.5}
+  .aurora i:nth-child(1){width:620px;height:620px;top:-260px;left:-140px;background:radial-gradient(circle,rgba(56,189,248,.42),transparent 68%)}
+  .aurora i:nth-child(2){width:560px;height:560px;top:8%;right:-200px;background:radial-gradient(circle,rgba(244,114,182,.34),transparent 68%)}
+  .aurora i:nth-child(3){width:520px;height:520px;bottom:-240px;left:34%;background:radial-gradient(circle,rgba(45,212,191,.22),transparent 68%)}
+  .aurora::after{content:'';position:absolute;top:-180px;left:50%;width:900px;height:340px;transform:translateX(-50%) rotate(-8deg);background:linear-gradient(90deg,transparent,rgba(45,212,191,.14) 25%,rgba(56,189,248,.16) 50%,rgba(244,114,182,.14) 75%,transparent);filter:blur(60px)}
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.35;background-image:radial-gradient(rgba(255,255,255,.045) 1px,transparent 1px);background-size:22px 22px}
+  .shell{position:relative;z-index:2;display:flex;min-height:100vh}
 
   /* ─── Sidebar ─── */
-  .sidebar{position:fixed;top:0;left:0;width:240px;height:100vh;background:var(--glass-bg);backdrop-filter:blur(24px);border-right:1px solid var(--glass-border);display:flex;flex-direction:column;z-index:100;transition:var(--transition)}
-  .sidebar-brand{padding:24px 20px;border-bottom:1px solid var(--border-subtle)}
+  .sidebar{width:var(--nav-w);flex-shrink:0;position:fixed;inset:0 auto 0 0;z-index:60;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(13,18,32,.92),rgba(9,12,22,.96));backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);border-right:1px solid var(--line);transition:transform .28s var(--ease)}
+  .sidebar-brand{padding:20px 18px 18px;position:relative}
+  .sidebar-brand::after{content:'';position:absolute;left:18px;right:18px;bottom:0;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--cyan),var(--blue) 45%,var(--violet));opacity:.8}
   .brand-row{display:flex;align-items:center;gap:12px}
-  .brand-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 16px rgba(59,130,246,0.25);flex-shrink:0}
-  .brand-text h1{font-size:15px;font-weight:700;color:var(--text-primary);letter-spacing:-0.3px;line-height:1.2}
-  .brand-text p{font-size:10px;color:var(--text-muted);letter-spacing:0.5px;text-transform:uppercase;margin-top:2px}
-  .nav-section{flex:1;padding:16px 12px;overflow-y:auto}
-  .nav-label{font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;padding:0 12px;margin-bottom:8px}
-  .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:500;color:var(--text-secondary);transition:var(--transition);margin-bottom:2px;border:1px solid transparent}
-  .nav-item:hover{background:rgba(255,255,255,0.04);color:var(--text-primary);border-color:var(--border-subtle)}
-  .nav-item.active{background:rgba(59,130,246,0.08);color:var(--accent-blue);border-color:rgba(59,130,246,0.2);box-shadow:0 0 20px rgba(59,130,246,0.05)}
-  .nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:0.7}
+  .brand-icon{width:40px;height:40px;border-radius:13px;flex-shrink:0;display:grid;place-items:center;background:linear-gradient(140deg,var(--blue),var(--violet) 55%,var(--cyan));box-shadow:0 8px 26px -6px rgba(56,189,248,.6)}
+  .brand-icon svg{width:21px;height:21px}
+  .brand-text h1{font-size:15px;font-weight:750;letter-spacing:-.35px;line-height:1.2;color:var(--ink)}
+  .brand-text p{font-size:10px;font-weight:600;color:var(--ink-3);letter-spacing:.14em;text-transform:uppercase;margin-top:2px}
+  .nav-section{flex:1;padding:6px 12px 16px;overflow-y:auto;scrollbar-width:thin}
+  .nav-label{font-size:10px;font-weight:700;color:var(--ink-3);letter-spacing:.14em;text-transform:uppercase;padding:18px 12px 8px}
+  .nav-item{display:flex;align-items:center;gap:11px;padding:10px 12px;margin-bottom:2px;border-radius:11px;text-decoration:none;color:var(--ink-2);font-size:13.5px;font-weight:550;border:1px solid transparent;transition:all .18s var(--ease);position:relative}
+  .nav-item:hover{background:rgba(255,255,255,.045);color:var(--ink)}
+  .nav-item.active{background:linear-gradient(90deg,rgba(56,189,248,.16),rgba(244,114,182,.07));color:#fff;border-color:rgba(56,189,248,.28)}
+  .nav-item.active::before{content:'';position:absolute;left:-12px;top:50%;transform:translateY(-50%);width:3px;height:20px;border-radius:0 3px 3px 0;background:linear-gradient(180deg,var(--blue),var(--violet))}
+  .nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.75}
   .nav-item.active svg{opacity:1}
-  .sidebar-bottom{padding:16px 12px;border-top:1px solid var(--border-subtle)}
+  .sidebar-bottom{padding:12px;border-top:1px solid var(--line)}
+  .health-mini{display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:12px;background:rgba(46,230,168,.07);border:1px solid rgba(46,230,168,.16);margin-bottom:8px;text-decoration:none;transition:background .18s}
+  .health-mini:hover{background:rgba(46,230,168,.12)}
+  .dot-live{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(46,230,168,.6);animation:pulse 2.4s infinite;flex-shrink:0}
+  @keyframes pulse{70%{box-shadow:0 0 0 8px rgba(46,230,168,0)}100%{box-shadow:0 0 0 0 rgba(46,230,168,0)}}
+  .health-mini b{font-size:11.5px;font-weight:650;color:var(--green)}
+  .health-mini span{margin-left:auto;font-size:10.5px;color:var(--ink-3)}
+  .who{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;transition:background .18s}
+  .who:hover{background:rgba(255,255,255,.05)}
+  .avatar{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:12px;font-weight:700;background:linear-gradient(140deg,var(--violet),var(--blue));color:#fff;flex-shrink:0}
+  .who-txt{min-width:0}
+  .who-txt b{font-size:12.5px;font-weight:600;display:block;color:var(--ink)}
+  .who-txt span{font-size:10.5px;color:var(--ink-3);display:block}
+  .who .out{margin-left:auto;color:var(--ink-3);display:inline-grid;place-items:center;padding:6px;border-radius:8px;transition:all .18s}
+  .who .out:hover{color:var(--rose);background:rgba(255,92,120,.1)}
+  .who .out svg{width:15px;height:15px}
   .nav-item.signout{color:var(--text-muted);font-size:12px}
   .nav-item.signout:hover{color:var(--accent-rose);background:rgba(244,63,94,0.06);border-color:rgba(244,63,94,0.15)}
+  .scrim{display:none}
 
-  /* ─── Main ─── */
-  .main{margin-left:240px;padding:32px 36px;min-height:100vh;position:relative;z-index:1}
-  .page-header{margin-bottom:32px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
-  .page-header-left h2{font-size:26px;font-weight:800;color:var(--text-primary);letter-spacing:-0.5px;line-height:1.2}
-  .page-header-left p{font-size:13px;color:var(--text-muted);margin-top:4px}
+  /* ─── Main + topbar ─── */
+  .main{flex:1;margin-left:var(--nav-w);min-width:0;min-height:100vh;position:relative;z-index:2;display:flex;flex-direction:column}
+  .topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;padding:14px 30px;background:rgba(6,8,15,.72);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-bottom:1px solid var(--line)}
+  .burger{display:none;width:40px;height:40px;min-width:40px;min-height:40px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink);cursor:pointer;place-items:center;flex-shrink:0}
+  .burger svg{width:20px;height:20px}
+  .crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .crumbs b{color:var(--ink);font-weight:650}
+  .crumbs .sep{color:var(--ink-3)}
+  .topbar .spacer{flex:1}
+  .icon-btn{width:38px;height:38px;min-width:38px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink-2);display:grid;place-items:center;cursor:pointer;position:relative;transition:all .18s;flex-shrink:0;text-decoration:none}
+  .icon-btn:hover{color:var(--ink);border-color:var(--line-strong)}
+  .icon-btn svg{width:17px;height:17px}
+  .only-mobile{display:none}
+  .page{padding:28px 30px 40px;max-width:1500px;width:100%;margin:0 auto;animation:fade .3s var(--ease)}
+  @keyframes fade{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .page-header{margin-bottom:26px;display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap}
+  .page-header-left h2,.page-title{font-size:27px;font-weight:790;letter-spacing:-.7px;line-height:1.15;color:var(--ink)}
+  .page-header-left p,.page-desc{font-size:13.5px;color:var(--ink-2);margin-top:5px}
   .page-header-actions{display:flex;gap:8px;flex-wrap:wrap}
 
   /* ─── Stat Cards ─── */
-  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:28px}
-  .stat-card{background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:20px;transition:var(--transition);position:relative;overflow:hidden}
-  .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent-blue),transparent);opacity:0;transition:var(--transition)}
-  .stat-card:hover{border-color:var(--border-medium);transform:translateY(-1px);box-shadow:var(--shadow-card)}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:16px}
+  .stat-card{background:var(--panel);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;transition:all .25s var(--ease);position:relative;overflow:hidden}
+  .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--blue),transparent);opacity:0;transition:opacity .25s}
+  .stat-card::after{content:'';position:absolute;width:150px;height:150px;border-radius:50%;filter:blur(48px);opacity:.22;pointer-events:none;right:-30px;bottom:-50px;background:var(--blue)}
+  .stat-card:hover{transform:translateY(-2px);border-color:var(--line-strong);box-shadow:var(--shadow)}
   .stat-card:hover::before{opacity:1}
-  .stat-card .label{font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px}
-  .stat-card .value{font-size:32px;font-weight:800;color:var(--text-primary);line-height:1}
-  .stat-card .sub{font-size:11px;color:var(--text-muted);margin-top:8px}
-  .stat-card.blue .value{color:var(--accent-blue)}
-  .stat-card.blue::before{background:linear-gradient(90deg,transparent,var(--accent-blue),transparent)}
-  .stat-card.green .value{color:var(--accent-green)}
-  .stat-card.green::before{background:linear-gradient(90deg,transparent,var(--accent-green),transparent)}
-  .stat-card.amber .value{color:var(--accent-amber)}
-  .stat-card.amber::before{background:linear-gradient(90deg,transparent,var(--accent-amber),transparent)}
-  .stat-card.rose .value{color:var(--accent-rose)}
-  .stat-card.rose::before{background:linear-gradient(90deg,transparent,var(--accent-rose),transparent)}
-  .stat-card.purple .value{color:var(--accent-purple)}
-  .stat-card.purple::before{background:linear-gradient(90deg,transparent,var(--accent-purple),transparent)}
-  .stat-card.cyan .value{color:var(--accent-cyan)}
-  .stat-card.cyan::before{background:linear-gradient(90deg,transparent,var(--accent-cyan),transparent)}
-  .stat-card.orange .value{color:#f97316}
-  .stat-card.orange::before{background:linear-gradient(90deg,transparent,#f97316,transparent)}
-  .stat-card.slate .value{color:var(--text-secondary)}
-  .stat-card.slate::before{background:linear-gradient(90deg,transparent,var(--text-secondary),transparent)}
+  .stat-card .label{font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px}
+  .stat-card .value{font-size:31px;font-weight:800;letter-spacing:-1.2px;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .stat-card .sub{font-size:11.5px;color:var(--ink-3);margin-top:11px}
+  .stat-card.blue .value{color:#a8c6ff}
+  .stat-card.blue::after{background:var(--blue)}
+  .stat-card.blue::before{background:linear-gradient(90deg,transparent,var(--blue),transparent)}
+  .stat-card.green .value{color:#8ff0cd}
+  .stat-card.green::after{background:var(--green)}
+  .stat-card.green::before{background:linear-gradient(90deg,transparent,var(--green),transparent)}
+  .stat-card.amber .value{color:#ffd68a}
+  .stat-card.amber::after{background:var(--amber)}
+  .stat-card.amber::before{background:linear-gradient(90deg,transparent,var(--amber),transparent)}
+  .stat-card.rose .value{color:#ff9aad}
+  .stat-card.rose::after{background:var(--rose)}
+  .stat-card.rose::before{background:linear-gradient(90deg,transparent,var(--rose),transparent)}
+  .stat-card.purple .value{color:#c9b0ff}
+  .stat-card.purple::after{background:var(--violet)}
+  .stat-card.purple::before{background:linear-gradient(90deg,transparent,var(--violet),transparent)}
+  .stat-card.cyan .value{color:#7ee7f5}
+  .stat-card.cyan::after{background:var(--cyan)}
+  .stat-card.cyan::before{background:linear-gradient(90deg,transparent,var(--cyan),transparent)}
+  .stat-card.orange .value{color:#ffcd7a}
+  .stat-card.orange::after{background:var(--amber)}
+  .stat-card.orange::before{background:linear-gradient(90deg,transparent,var(--amber),transparent)}
+  .stat-card.slate .value{color:var(--ink-2)}
+  .stat-card.slate::after{background:rgba(255,255,255,.12)}
+  .stat-card.slate::before{background:linear-gradient(90deg,transparent,var(--ink-2),transparent)}
 
-  /* ─── Table ─── */
-  .table-wrap{background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius);overflow:hidden}
-  .table-scroll{overflow-x:auto}
+  /* ─── Cards, tables ─── */
+  .card{background:var(--panel);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--line);border-radius:var(--r-lg)}
+  .card-pad{padding:22px}
+  .card-head{display:flex;align-items:center;gap:12px;padding:18px 22px 0}
+  .card-head h3{font-size:14.5px;font-weight:700;letter-spacing:-.2px;color:var(--ink)}
+  .card-head .sub{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+  .card-head .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .table-wrap{background:var(--panel);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+  .table-scroll,.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
   table{width:100%;border-collapse:collapse}
-  thead{background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border-subtle)}
-  th{padding:12px 16px;font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;text-align:left;white-space:nowrap}
-  td{padding:12px 16px;font-size:13px;border-bottom:1px solid var(--border-subtle);white-space:nowrap}
-  tr:last-child td{border-bottom:none}
-  tr:hover td{background:rgba(255,255,255,0.02)}
+  thead{background:rgba(255,255,255,.025);border-bottom:1px solid var(--line)}
+  thead th{padding:11px 16px;font-size:10.5px;font-weight:700;color:var(--ink-3);letter-spacing:.1em;text-transform:uppercase;text-align:left;white-space:nowrap}
+  tbody td{padding:13px 16px;font-size:13px;color:var(--ink);border-bottom:1px solid rgba(255,255,255,.045);white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr{transition:background .16s}
+  tbody tr:hover{background:rgba(255,255,255,.03)}
 
   /* ─── Badges ─── */
-  .badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;letter-spacing:0.2px}
-  .badge-green{background:rgba(16,185,129,0.1);color:var(--accent-green);border:1px solid rgba(16,185,129,0.2)}
-  .badge-rose{background:rgba(244,63,94,0.1);color:var(--accent-rose);border:1px solid rgba(244,63,94,0.2)}
-  .badge-amber{background:rgba(245,158,11,0.1);color:var(--accent-amber);border:1px solid rgba(245,158,11,0.2)}
-  .badge-blue{background:rgba(59,130,246,0.1);color:var(--accent-blue);border:1px solid rgba(59,130,246,0.2)}
-  .badge-purple{background:rgba(139,92,246,0.1);color:var(--accent-purple);border:1px solid rgba(139,92,246,0.2)}
-  .badge-slate{background:rgba(148,163,184,0.08);color:var(--text-secondary);border:1px solid rgba(148,163,184,0.15)}
-  .badge-cyan{background:rgba(6,182,212,0.1);color:var(--accent-cyan);border:1px solid rgba(6,182,212,0.2)}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:7px;font-size:10.5px;font-weight:700;letter-spacing:.02em;border:1px solid var(--line);white-space:nowrap}
+  .badge-green{background:rgba(46,230,168,.12);color:#7df0c6;border-color:rgba(46,230,168,.24)}
+  .badge-rose{background:rgba(255,92,120,.12);color:#ff9aad;border-color:rgba(255,92,120,.24)}
+  .badge-amber{background:rgba(255,176,32,.12);color:#ffcd7a;border-color:rgba(255,176,32,.24)}
+  .badge-blue{background:rgba(56,189,248,.13);color:#9cc0ff;border-color:rgba(56,189,248,.24)}
+  .badge-purple{background:rgba(244,114,182,.13);color:#c8b0ff;border-color:rgba(244,114,182,.24)}
+  .badge-slate{background:rgba(255,255,255,.05);color:var(--ink-2);border-color:var(--line)}
+  .badge-cyan{background:rgba(45,212,191,.13);color:#7ee7f5;border-color:rgba(45,212,191,.24)}
 
   /* ─── Toggle Switch ─── */
-  .toggle{position:relative;width:42px;height:24px;display:inline-block;flex-shrink:0}
+  .toggle{position:relative;width:40px;height:23px;min-width:40px;display:inline-block;flex-shrink:0;cursor:pointer}
   .toggle input{opacity:0;width:0;height:0;position:absolute}
-  .toggle .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);border-radius:12px;transition:var(--transition);border:1px solid var(--border-subtle)}
-  .toggle .slider:before{content:"";position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:var(--text-muted);border-radius:50%;transition:var(--transition)}
-  .toggle input:checked+.slider{background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3)}
-  .toggle input:checked+.slider:before{transform:translateX(18px);background:var(--accent-green);box-shadow:0 0 8px rgba(16,185,129,0.4)}
-  .toggle-sm{width:36px;height:20px}
-  .toggle-sm .slider:before{height:14px;width:14px;left:3px;bottom:3px}
+  .toggle .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.09);border-radius:20px;transition:all .22s;border:1px solid var(--line)}
+  .toggle .slider:before{content:"";position:absolute;height:17px;width:17px;left:2px;top:2px;background:var(--ink-3);border-radius:50%;transition:all .22s}
+  .toggle input:checked+.slider{background:rgba(46,230,168,.2);border-color:rgba(46,230,168,.4)}
+  .toggle input:checked+.slider:before{transform:translateX(17px);background:var(--green);box-shadow:0 0 10px rgba(46,230,168,.65)}
+  .toggle-sm{width:36px;height:20px;min-width:36px}
+  .toggle-sm .slider:before{height:14px;width:14px;left:2px;top:2px}
   .toggle-sm input:checked+.slider:before{transform:translateX(16px)}
 
   /* ─── Forms ─── */
-  .form-card{background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:24px;margin-bottom:24px}
-  .form-card h3{font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+  .form-card{background:var(--panel);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--line);border-radius:var(--r-lg);padding:22px;margin-bottom:16px}
+  .form-card h3{font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:16px;display:flex;align-items:center;gap:8px}
   .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
-  .form-group{display:flex;flex-direction:column;gap:6px}
-  .form-group label{font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px}
-  .form-group input,.form-group textarea,.form-group select{padding:11px 14px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:10px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;transition:var(--transition)}
-  .form-group input:focus,.form-group textarea:focus,.form-group select:focus{border-color:var(--border-active);box-shadow:0 0 0 3px rgba(59,130,246,0.08)}
-  .form-group input::placeholder,.form-group textarea::placeholder{color:var(--text-muted)}
+  .form-group{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .form-group label{font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em}
+  .form-group input,.form-group textarea,.form-group select{padding:11px 14px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:11px;color:var(--ink);font-size:13px;font-family:inherit;outline:none;transition:all .18s;width:100%}
+  .form-group input:focus,.form-group textarea:focus,.form-group select:focus{border-color:rgba(56,189,248,.5);box-shadow:0 0 0 3px rgba(56,189,248,.12)}
+  .form-group input::placeholder,.form-group textarea::placeholder{color:var(--ink-3)}
   .form-group textarea{resize:vertical;min-height:80px}
-  .form-group select{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
-  .form-actions{margin-top:16px;display:flex;gap:8px}
+  .form-group select{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a6784' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px}
+  .form-group select option{background:#111626}
+  .form-actions{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap}
 
   /* ─── Buttons ─── */
-  .btn{padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:var(--transition);display:inline-flex;align-items:center;gap:6px;letter-spacing:0.1px}
-  .btn:active{transform:scale(0.98)}
-  .btn-primary{background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple));color:#fff;box-shadow:0 4px 16px rgba(59,130,246,0.2)}
-  .btn-primary:hover{box-shadow:0 6px 24px rgba(59,130,246,0.3);transform:translateY(-1px)}
-  .btn-secondary{background:rgba(255,255,255,0.05);color:var(--text-secondary);border:1px solid var(--border-subtle)}
-  .btn-secondary:hover{background:rgba(255,255,255,0.08);color:var(--text-primary);border-color:var(--border-medium)}
-  .btn-danger{background:rgba(244,63,94,0.08);color:var(--accent-rose);border:1px solid rgba(244,63,94,0.15)}
-  .btn-danger:hover{background:rgba(244,63,94,0.15);border-color:rgba(244,63,94,0.3)}
-  .btn-ghost{background:transparent;color:var(--text-secondary);padding:8px 12px}
-  .btn-ghost:hover{background:rgba(255,255,255,0.05);color:var(--text-primary)}
-  .btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
-  .btn-icon{width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid var(--border-subtle);color:var(--text-secondary);cursor:pointer;transition:var(--transition);font-size:14px}
-  .btn-icon:hover{background:rgba(255,255,255,0.08);color:var(--text-primary);border-color:var(--border-medium)}
-  .btn-icon.danger:hover{background:rgba(244,63,94,0.1);color:var(--accent-rose);border-color:rgba(244,63,94,0.2)}
-  .btn-icon.edit:hover{background:rgba(245,158,11,0.1);color:var(--accent-amber);border-color:rgba(245,158,11,0.2)}
-  .btn-icon.fetch:hover{background:rgba(6,182,212,0.1);color:var(--accent-cyan);border-color:rgba(6,182,212,0.2)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 17px;border-radius:11px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .18s var(--ease);text-decoration:none;min-height:40px}
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:linear-gradient(135deg,var(--blue),var(--violet));color:#fff;box-shadow:0 8px 22px -8px rgba(56,189,248,.85)}
+  .btn-primary:hover{box-shadow:0 12px 28px -8px rgba(56,189,248,1)}
+  .btn-secondary{background:rgba(255,255,255,.045);color:var(--ink-2);border-color:var(--line)}
+  .btn-secondary:hover{background:rgba(255,255,255,.07);color:var(--ink);border-color:var(--line-strong)}
+  .btn-danger{background:rgba(255,92,120,.08);color:var(--rose);border-color:rgba(255,92,120,.15)}
+  .btn-danger:hover{background:rgba(255,92,120,.15);border-color:rgba(255,92,120,.3)}
+  .btn-ghost{background:rgba(255,255,255,.045);border-color:var(--line);color:var(--ink-2)}
+  .btn-ghost:hover{color:var(--ink);border-color:var(--line-strong);background:rgba(255,255,255,.07)}
+  .btn-sm{padding:7px 12px;font-size:12px;border-radius:9px;min-height:34px}
+  .btn-icon{width:34px;height:34px;min-width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--ink-2);cursor:pointer;transition:var(--transition);font-size:14px}
+  .btn-icon:hover{background:rgba(255,255,255,.08);color:var(--ink);border-color:var(--line-strong)}
+  .btn-icon.danger:hover{background:rgba(255,92,120,.1);color:var(--rose);border-color:rgba(255,92,120,.2)}
+  .btn-icon.edit:hover{background:rgba(255,176,32,.1);color:var(--amber);border-color:rgba(255,176,32,.2)}
+  .btn-icon.fetch:hover{background:rgba(45,212,191,.1);color:var(--cyan);border-color:rgba(45,212,191,.2)}
+  .filter-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;background:var(--panel);border:1px solid var(--line);color:var(--ink-2);cursor:pointer;transition:var(--transition);font-family:inherit;min-height:34px}
+  .filter-btn:hover{border-color:var(--line-strong);color:var(--ink)}
+  .filter-btn.active{background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.3);color:var(--blue)}
 
-  /* ─── Section Headers ─── */
-  .section-header{display:flex;align-items:center;gap:10px;margin:28px 0 14px;font-size:14px;font-weight:600;color:var(--text-primary)}
-  .section-header .section-count{margin-left:auto;font-size:12px;font-weight:500;color:var(--text-muted)}
+  /* ─── Section headers, alerts, mono ─── */
+  .section-header{display:flex;align-items:center;gap:10px;margin:28px 0 14px;font-size:14px;font-weight:600;color:var(--ink)}
+  .section-header .section-count{margin-left:auto;font-size:12px;font-weight:500;color:var(--ink-3)}
+  .alert{padding:12px 16px;border-radius:var(--r);font-size:13px;margin-bottom:16px;display:flex;align-items:flex-start;gap:8px;line-height:1.6}
+  .alert-green{background:rgba(46,230,168,.08);color:var(--green);border:1px solid rgba(46,230,168,.15)}
+  .alert-blue{background:rgba(56,189,248,.08);color:var(--blue);border:1px solid rgba(56,189,248,.15)}
+  .alert-amber,.alert-rose{background:rgba(255,92,120,.08);color:var(--rose);border:1px solid rgba(255,92,120,.15)}
+  .mono{font-family:'JetBrains Mono','SF Mono',Consolas,Menlo,monospace;font-size:12px;font-variant-numeric:tabular-nums}
 
-  /* ─── Alert ─── */
-  .alert{padding:12px 16px;border-radius:var(--radius);font-size:13px;margin-bottom:20px;display:flex;align-items:center;gap:8px}
-  .alert-green{background:rgba(16,185,129,0.08);color:var(--accent-green);border:1px solid rgba(16,185,129,0.15)}
-  .alert-blue{background:rgba(59,130,246,0.08);color:var(--accent-blue);border:1px solid rgba(59,130,246,0.15)}
+  /* ─── Modal ─── */
+  .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center;padding:16px}
+  .modal-overlay.show{display:flex}
+  .modal{background:var(--panel-hi);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--line);border-radius:var(--r-lg);padding:28px;width:100%;max-width:500px;box-shadow:var(--shadow);max-height:calc(100vh - 32px);overflow-y:auto}
+  .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .modal-header h3{margin:0;font-size:16px;font-weight:700;color:var(--ink)}
+  .modal-close{background:none;border:none;color:var(--ink-3);font-size:24px;cursor:pointer;padding:4px;line-height:1;transition:var(--transition);min-width:34px;min-height:34px}
+  .modal-close:hover{color:var(--ink)}
 
-  /* ─── Mono ─── */
-  .mono{font-family:'SF Mono','Fira Code',Consolas,'Liberation Mono',Menlo,monospace;font-size:12px}
+  /* ─── Mobile tab bar ─── */
+  .tabbar{display:none}
+  .split-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .pv-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:32px}
+  .models-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 
-  /* ─── Mobile ─── */
-  @media(max-width:768px){
-    .sidebar{width:100%;height:auto;position:relative;flex-direction:row;overflow-x:auto;backdrop-filter:none}
-    .sidebar-brand{display:none}
-    .nav-section{display:flex;gap:4px;padding:8px;overflow-x:auto;flex:1}
-    .nav-label{display:none}
-    .nav-item{padding:8px 14px;font-size:12px;white-space:nowrap;border-radius:8px}
-    .nav-item span{display:none}
-    .nav-item svg{width:16px;height:16px}
-    .sidebar-bottom{display:none}
-    .main{margin-left:0;padding:16px}
-    .stat-grid{grid-template-columns:1fr 1fr}
-    .page-header{flex-direction:column;align-items:flex-start}
+  /* ─── Responsive ─── */
+  @media(max-width:1180px){
+    .split-2{grid-template-columns:1fr}
+    .pv-top{flex-wrap:wrap}
+    .burger{width:44px;height:44px;min-width:44px}
+    input,select,textarea{font-size:16px !important}
+  }
+  @media(max-width:860px){
+    .sidebar{transform:translateX(-100%);width:280px;box-shadow:var(--shadow)}
+    body.nav-open .sidebar{transform:translateX(0)}
+    .scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:55}
+    body.nav-open .scrim{display:block}
+    .main{margin-left:0;padding-bottom:84px}
+    .burger{display:grid}
+    .only-mobile{display:grid}
+    .topbar{padding:12px 16px;gap:10px}
+    .page{padding:20px 16px 0}
+    .page-header{align-items:flex-start;flex-direction:column}
+    .page-header-left h2,.page-title{font-size:22px;letter-spacing:-.5px}
+    .page-header-actions{margin-left:0;width:100%}
+    .page-header-actions .btn{flex:1;justify-content:center}
+    .stat-grid{grid-template-columns:1fr 1fr;gap:10px}
+    .stat-card{padding:15px}
+    .stat-card .value{font-size:25px}
+    .stat-card .label{font-size:9.5px}
+    thead th,tbody td{padding:11px 13px}
+    .modal{padding:22px 18px}
+    .form-card{padding:17px}
+    .tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:70;padding:7px 6px calc(7px + env(safe-area-inset-bottom));background:rgba(10,13,23,.93);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-top:1px solid var(--line)}
+    .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border-radius:12px;text-decoration:none;color:var(--ink-3);font-size:9.5px;font-weight:650;letter-spacing:.02em;transition:all .18s;min-height:46px;justify-content:center;min-width:0}
+    .tabbar a svg{width:20px;height:20px}
+    .tabbar a.on{color:var(--blue);background:rgba(56,189,248,.1)}
   }
 </style>
 </head>
 <body>
-
-<nav class="sidebar">
+<div class="aurora"><i></i><i></i><i></i></div>
+<div class="grain"></div>
+<div class="shell">
+<nav class="sidebar" aria-label="Primary">
   <div class="sidebar-brand">
     <div class="brand-row">
-      <div class="brand-icon">⚡</div>
+      <div class="brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="5.5" r="1.7" fill="#fff" stroke="none"/><circle cx="5" cy="12" r="1.7" fill="#fff" stroke="none"/><circle cx="5" cy="18.5" r="1.7" fill="#fff" stroke="none"/><path d="M6.7 6.3c3.8 1.4 6.3 3.2 9.3 4.7M6.7 12h8.6M6.7 17.7c3.8-1.4 6.3-3.2 9.3-4.7"/><circle cx="18.5" cy="12" r="2.6" fill="#fff" stroke="none"/></svg></div>
       <div class="brand-text">
         <h1>CFRouter</h1>
-        <p>Proxy Gateway</p>
+        <p>Prism &middot; Gateway</p>
       </div>
     </div>
   </div>
   <div class="nav-section">
-    <div class="nav-label">Navigation</div>
-    <a href="/admin/analytics" class="nav-item ${activeTab === 'analytics' ? 'active' : ''}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-      <span>Analytics</span>
-    </a>
-    <a href="/admin/health" class="nav-item ${activeTab === 'health' ? 'active' : ''}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-      <span>Health</span>
-    </a>
-    <a href="/admin/providers" class="nav-item ${activeTab === 'providers' ? 'active' : ''}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-      <span>Providers</span>
-    </a>
-    <a href="/admin/models" class="nav-item ${activeTab === 'models' ? 'active' : ''}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
-      <span>Models</span>
-    </a>
-    <a href="/admin/playground" class="nav-item ${activeTab === 'playground' ? 'active' : ''}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      <span>Playground</span>
-    </a>
-    <a href="/admin/tokens" class="nav-item ${activeTab === 'tokens' ? 'active' : ''}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-      <span>Tokens</span>
-    </a>
-    <a href="/admin/docs" class="nav-item ${activeTab === 'docs' ? 'active' : ''}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-      <span>Docs</span>
-    </a>
+    <div class="nav-label">Overview</div>
+    ${navItem('analytics', '/admin/analytics', 'Analytics', icoAnalytics)}
+    ${navItem('health', '/admin/health', 'Health', icoHealth)}
+    <div class="nav-label">Configuration</div>
+    ${navItem('providers', '/admin/providers', 'Providers', icoProviders)}
+    ${navItem('models', '/admin/models', 'Models', icoModels)}
+    ${navItem('tokens', '/admin/tokens', 'Tokens', icoTokens)}
+    <div class="nav-label">Tools</div>
+    ${navItem('playground', '/admin/playground', 'Playground', icoPlayground)}
+    ${navItem('docs', '/admin/docs', 'API Docs', icoDocs)}
   </div>
   <div class="sidebar-bottom">
-    <a href="/admin/logout" class="nav-item signout">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-      <span>Sign Out</span>
-    </a>
+    <a href="/admin/health" class="health-mini"><i class="dot-live"></i><b>Health monitor</b><span>&rarr;</span></a>
+    <div class="who">
+      <div class="avatar">AD</div>
+      <div class="who-txt"><b>admin</b><span>Owner</span></div>
+      <a href="/admin/logout" class="out" title="Sign out">${icoOut}</a>
+    </div>
   </div>
 </nav>
+<div class="scrim" onclick="document.body.classList.remove('nav-open')"></div>
 
 <div class="main">
+  <header class="topbar">
+    <button class="burger" onclick="document.body.classList.toggle('nav-open')" aria-label="Open menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
+    <div class="crumbs"><span>CFRouter</span><span class="sep">/</span><b>${escapeHtml(title)}</b></div>
+    <div class="spacer"></div>
+    <a class="icon-btn only-mobile" href="/admin/logout" title="Sign out">${icoOut}</a>
+  </header>
+  <div class="page">
   ${content}
+  </div>
 </div>
+</div>
+
+<nav class="tabbar" aria-label="Primary">
+  ${tabItem('analytics', '/admin/analytics', 'Stats', icoAnalytics)}
+  ${tabItem('providers', '/admin/providers', 'Providers', icoProviders)}
+  ${tabItem('models', '/admin/models', 'Models', icoModels)}
+  ${tabItem('playground', '/admin/playground', 'Chat', icoPlayground)}
+  ${tabItem('tokens', '/admin/tokens', 'Keys', icoTokens)}
+  ${tabItem('docs', '/admin/docs', 'Docs', icoDocs)}
+</nav>
+
+<script>
+document.querySelectorAll('.sidebar .nav-item').forEach(function(a){a.addEventListener('click',function(){document.body.classList.remove('nav-open')})});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')document.body.classList.remove('nav-open')});
+</script>
 
 </body>
 </html>`;
@@ -3305,7 +3796,7 @@ function adminLayout(title, activeTab, content) {
 // ─── Admin: Analytics Tab ────────────────────────────────────────────────
 
 async function renderAdminAnalytics(env, url) {
-  const days = parseInt(url.searchParams.get("days") || "7", 10);
+  const days = parseInt(url.searchParams.get("days") || "7", 10) || 7;
 
   // SQL aggregation: daily usage stats
   // endpoints_data is a nested JSON object like {"/v1/chat:gpt-4o": {calls, tokens}}
@@ -3385,8 +3876,8 @@ async function renderAdminAnalytics(env, url) {
     const model = modelParts.join(':') || 'unknown';
     const pct = totalCalls > 0 ? ((m.calls / totalCalls) * 100).toFixed(1) : 0;
     return `<tr>
-      <td style="font-weight:500">${model}</td>
-      <td><span class="badge badge-slate">${endpoint}</span></td>
+      <td style="font-weight:500">${escapeHtml(model)}</td>
+      <td><span class="badge badge-slate">${escapeHtml(endpoint)}</span></td>
       <td style="text-align:center;font-weight:600">${m.calls}</td>
       <td class="mono" style="color:#60a5fa">${(m.prompt_tokens || 0).toLocaleString()}</td>
       <td class="mono" style="color:#a78bfa">${(m.completion_tokens || 0).toLocaleString()}</td>
@@ -3403,7 +3894,7 @@ async function renderAdminAnalytics(env, url) {
   }).join('');
 
   const keyRows = keyStats.map(k => `<tr>
-    <td style="font-weight:500">${k.key_name}</td>
+    <td style="font-weight:500">${escapeHtml(k.key_name)}</td>
     <td style="text-align:center;font-weight:600">${k.calls}</td>
     <td class="mono" style="color:#60a5fa">${(k.prompt_tokens || 0).toLocaleString()}</td>
     <td class="mono" style="color:#a78bfa">${(k.completion_tokens || 0).toLocaleString()}</td>
@@ -3413,7 +3904,7 @@ async function renderAdminAnalytics(env, url) {
   const content = `
     <div class="page-header">
       <div class="page-header-left">
-        <h2>📊 Analytics</h2>
+        <h2>Analytics</h2>
         <p>Usage metrics and consumption insights</p>
       </div>
       <div class="page-header-actions">
@@ -3433,12 +3924,12 @@ async function renderAdminAnalytics(env, url) {
         <div class="value">${totalTokens.toLocaleString()}</div>
       </div>
       <div class="stat-card orange">
-        <div class="label">⬇️ Input Tokens</div>
+        <div class="label">Input Tokens</div>
         <div class="value">${totalPromptTokens.toLocaleString()}</div>
         <div class="sub">Prompt / Context</div>
       </div>
       <div class="stat-card purple">
-        <div class="label">⬆️ Output Tokens</div>
+        <div class="label">Output Tokens</div>
         <div class="value">${totalCompletionTokens.toLocaleString()}</div>
         <div class="sub">Generated</div>
       </div>
@@ -3454,7 +3945,7 @@ async function renderAdminAnalytics(env, url) {
 
     <!-- Daily Usage Chart -->
     <div style="background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:24px;margin-bottom:24px">
-      <h3 style="font-size:14px;font-weight:600;margin-bottom:20px;color:var(--text-primary)">📈 Daily Requests</h3>
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:20px;color:var(--text-primary)">Daily Requests</h3>
       <div class="chart-container">
         ${dailyStats.length === 0
           ? '<div style="text-align:center;padding:40px;color:var(--text-muted)">No data for this period</div>'
@@ -3470,11 +3961,11 @@ async function renderAdminAnalytics(env, url) {
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+    <div class="split-2">
       <!-- Per-Model Breakdown -->
       <div style="background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius);overflow:hidden">
         <div style="padding:16px 20px;border-bottom:1px solid var(--border-subtle)">
-          <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">🤖 By Model</h3>
+          <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">By Model</h3>
         </div>
         <div class="table-scroll">
           <table>
@@ -3491,7 +3982,7 @@ async function renderAdminAnalytics(env, url) {
       <!-- Per-Key Breakdown -->
       <div style="background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius);overflow:hidden">
         <div style="padding:16px 20px;border-bottom:1px solid var(--border-subtle)">
-          <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">🔑 By API Key</h3>
+          <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">By API Key</h3>
         </div>
         <div class="table-scroll">
           <table>
@@ -3554,8 +4045,8 @@ async function renderAdminHealth(env) {
     else statusBadge = '<span class="badge badge-green">Active</span>';
 
     return `<tr style="${p.enabled ? '' : 'opacity:0.5;'}">
-      <td style="font-weight:600">${p.name}</td>
-      <td class="mono" style="color:var(--text-secondary);font-size:12px">${p.base_url}</td>
+      <td style="font-weight:600">${escapeHtml(p.name)}</td>
+      <td class="mono" style="color:var(--text-secondary);font-size:12px">${escapeHtml(p.base_url)}</td>
       <td>${statusBadge}</td>
       <td style="text-align:center;font-weight:600">${modelCount}</td>
       <td style="text-align:center;font-weight:600;color:${enabledTokens > 0 ? 'var(--accent-green)' : 'var(--text-muted)'}">${enabledTokens}/${tokens.length}</td>
@@ -3619,6 +4110,64 @@ function providerSlug(name) {
     .substring(0, 32) || "provider";
 }
 
+// ─── Provider logos ────────────────────────────────────────────────────
+// Every catalog provider shows its own real logo: the official favicon of
+// the provider's own website (64px, via Google's favicon cache). If the
+// logo fails to load (offline, blocked, unknown domain) the <img> removes
+// itself and the letter badge underneath shows through, so a card never
+// renders empty.
+function providerLogoDomain(website, baseUrl) {
+  const hostOf = (u) => {
+    try {
+      const h = new URL(u).hostname.replace(/^www\./i, "").toLowerCase();
+      return /^[a-z0-9.-]+$/i.test(h) ? h : "";
+    } catch { return ""; }
+  };
+  // Reduce console/API subdomains to the registrable domain so the logo
+  // matches the brand (console.groq.com -> groq.com, aistudio.google.com
+  // -> google.com). Multi-part public suffixes (com.cn, co.uk, ...) keep
+  // one extra label.
+  const regDomain = (h) => {
+    if (!h) return "";
+    const multi = ["co.uk", "com.cn", "net.cn", "org.cn", "gov.cn", "com.au", "co.jp", "co.kr", "ac.cn"];
+    const parts = h.split(".");
+    if (parts.length <= 2) return h;
+    if (multi.includes(parts.slice(-2).join("."))) return parts.slice(-3).join(".");
+    return parts.slice(-2).join(".");
+  };
+  return regDomain(hostOf(website) || hostOf(baseUrl));
+}
+
+function providerLogoUrl(domain) {
+  return "https://www.google.com/s2/favicons?domain=" + encodeURIComponent(domain) + "&sz=64";
+}
+
+// Catalog entry behind a saved provider (exact base URL first, else slug).
+function catalogForProvider(slug, baseUrl) {
+  return PROVIDER_CATALOG.find(c => c.baseUrl === baseUrl || c.slug === slug) || null;
+}
+
+// Logo for a catalog card (p = catalog entry). White mat + brand border,
+// letter badge underneath as the load-failure fallback.
+function catalogLogoHTML(p) {
+  const domain = providerLogoDomain(p.website, p.baseUrl);
+  const fallback = `<span style="color:${p.color};font-weight:800;font-size:${p.letter.length > 2 ? "11" : "14"}px">${p.letter}</span>`;
+  if (!domain) return fallback;
+  return `${fallback}<img src="${providerLogoUrl(domain)}" alt="${escapeHtml(p.name)} logo" loading="lazy" style="width:100%;height:100%;object-fit:contain;position:absolute;inset:0;background:#fff;padding:5px;" onerror="this.remove()">`;
+}
+
+// Logo for a saved "Your Providers" card (p = DB row, slug = its slug).
+// Catalog match first (exact logo), else the hostname of its own base URL.
+function customProviderLogoHTML(p, slug) {
+  const cat = catalogForProvider(slug, p.base_url);
+  const color = cat ? cat.color : "#38bdf8";
+  const letters = escapeHtml((p.name || "?").trim().slice(0, 2).toUpperCase() || "?");
+  const domain = providerLogoDomain(cat ? cat.website : "", p.base_url);
+  const fallback = `<span style="color:${color};font-weight:800;font-size:16px">${cat ? cat.letter : letters}</span>`;
+  if (!domain) return fallback;
+  return `${fallback}<img src="${providerLogoUrl(domain)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:contain;position:absolute;inset:0;background:#fff;padding:6px;" onerror="this.remove()">`;
+}
+
 // Escape values that originate outside the worker (upstream error text, ...)
 // before interpolating them into admin HTML.
 function escapeHtml(value) {
@@ -3642,25 +4191,257 @@ function parseTokens(tokensRaw) {
     const arr = JSON.parse(tokensRaw || "[]");
     if (!Array.isArray(arr)) return [];
     return arr.map(t => {
-      if (typeof t === "string") return { value: t, enabled: true, name: "" };
-      return { value: t.value || "", enabled: t.enabled !== false, name: t.name || "" };
+      if (typeof t === "string") return { value: t, enabled: true, name: "", extras: {} };
+      return {
+        value: t.value || "",
+        enabled: t.enabled !== false,
+        name: t.name || "",
+        extras: parseTokenExtras(t.extras),
+      };
     });
   } catch (e) { return []; }
 }
 
+// Companion credential values stored beside a token (account id, GroupId, ...).
+// Only non-empty strings survive, so a field the admin left blank reads as "not
+// set" and the required-field check can catch it.
+function parseTokenExtras(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const extras = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) extras[key] = text;
+  }
+  return extras;
+}
+
 function tokensToJSON(tokens) {
-  return JSON.stringify(tokens.map(t => ({ value: t.value, enabled: t.enabled, name: t.name || "" })));
+  return JSON.stringify(tokens.map(t => {
+    const out = { value: t.value, enabled: t.enabled, name: t.name || "" };
+    const extras = parseTokenExtras(t.extras);
+    if (Object.keys(extras).length) out.extras = extras;
+    return out;
+  }));
+}
+
+// ─── Credential Fields ───────────────────────────────────────────────────
+// A token is not always enough on its own. Cloudflare Workers AI carries the
+// account id in the URL path, MiniMax wants a GroupId query parameter, Modal
+// authenticates with a Modal-Key/Modal-Secret header pair. Those companions
+// differ per key, so each one is stored beside its token (token.extras) instead
+// of being baked into the provider's base_url — which is what lets a single
+// provider row round-robin across several accounts.
+//
+// A provider declares what it needs in `credential_fields`. Each entry says
+// where the value goes:
+//   target "url"    — replaces {key} in base_url
+//   target "query"  — appended to the URL as name=value
+//   target "header" — sent as the HTTP header `name`
+// `auth_style` covers the other axis — where the token itself goes, since
+// providers disagree (Azure wants `api-key`, Modal wants `Modal-Key`, Baidu a
+// query parameter):
+//   "bearer" (default) | "x-api-key" | "api-key" | "header:<Name>" |
+//   "query:<param>" | "none"
+const CREDENTIAL_FIELD_TARGETS = ["url", "query", "header"];
+
+function normalizeCredentialField(field) {
+  const key = String(field?.key || "").trim();
+  const target = CREDENTIAL_FIELD_TARGETS.includes(field?.target) ? field.target : "url";
+  return {
+    key,
+    label: String(field?.label || "").trim() || key,
+    placeholder: String(field?.placeholder || "").trim(),
+    target,
+    // Header name, or query-parameter name for target "query". The wire name is
+    // explicit rather than derived from the key because providers disagree about
+    // casing (MiniMax wants GroupId, not group_id).
+    name: String(field?.name || field?.header || key).trim(),
+    required: field?.required !== false,
+    secret: field?.secret === true,
+  };
+}
+
+function parseCredentialFields(raw) {
+  let arr;
+  try { arr = JSON.parse(raw || "[]"); } catch (e) { return []; }
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map(f => normalizeCredentialField(typeof f === "string" ? { key: f } : f))
+    .filter(f => f.key);
+}
+
+function credentialFieldsToJSON(fields) {
+  return JSON.stringify(parseCredentialFields(JSON.stringify(fields || [])));
+}
+
+// The Edit Provider modal posts one declaration per line:
+//   key | Label | url|query|header | Wire-Name | optional,secret
+// Only `key` is required — the rest default to the key itself, `url`, and a
+// required, non-secret field. This is the escape hatch that lets any custom
+// provider use companion credentials, not just the ones in the catalog.
+function parseCredentialFieldsForm(text) {
+  return String(text || "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith("#"))
+    .map(line => {
+      const [key, label, target, name, flags] = line.split("|").map(part => (part || "").trim());
+      const flagList = String(flags || "").toLowerCase().split(",").map(f => f.trim());
+      return normalizeCredentialField({
+        key, label, target, name,
+        required: !flagList.includes("optional"),
+        secret: flagList.includes("secret"),
+      });
+    })
+    .filter(f => f.key);
+}
+
+function credentialFieldsToForm(fields) {
+  return parseCredentialFields(fields).map(f => {
+    const flags = [!f.required && "optional", f.secret && "secret"].filter(Boolean).join(",");
+    return [f.key, f.label, f.target, f.name, flags].join(" | ");
+  }).join("\n");
+}
+
+// Bulk credential textarea → token records. With no declared fields each line is
+// just a token, so the original paste-your-keys behaviour is unchanged. With
+// them, a line is pipe-separated and each column after the first fills one
+// declared field, in declaration order: `token | account_id | ...`.
+function parseBulkTokens(text, fields) {
+  const declared = fields || [];
+  const tokens = [];
+  const lines = String(text || "").split("\n").map(l => l.trim()).filter(l => l.length > 0);
+
+  for (let i = 0; i < lines.length; i++) {
+    const parts = lines[i].split("|").map(p => p.trim());
+    const value = parts[0];
+    if (!value) continue;
+    if (parts.length > declared.length + 1) {
+      const shape = ["token", ...declared.map(f => f.key)].join(" | ");
+      return { error: `Line ${i + 1} has ${parts.length} columns; expected ${declared.length + 1}: ${shape}` };
+    }
+    const extras = {};
+    for (let f = 0; f < declared.length; f++) {
+      const filled = parts[f + 1] || "";
+      // Reject rather than store a credential that cannot serve a request —
+      // otherwise it is silently skipped at routing time as "no usable token".
+      if (!filled && declared[f].required) {
+        return { error: `Line ${i + 1} is missing required column "${declared[f].key}"` };
+      }
+      if (filled) extras[declared[f].key] = filled;
+    }
+    tokens.push({ value, enabled: true, name: "", extras });
+  }
+  return { tokens };
+}
+
+// Which {placeholders} does this provider's base_url still expect after the
+// token's companions are applied? Turns "the request went to a host literally
+// named {account_id}" into an error that names the missing field.
+function unfilledCredentialFields(provider, token) {
+  const extras = token?.extras || {};
+  return (String(provider?.base_url || "").match(/\{([a-zA-Z0-9_.-]+)\}/g) || [])
+    .map(m => m.slice(1, -1))
+    .filter(key => !extras[key]);
+}
+
+// A token missing a required companion cannot serve a request, so it must never
+// be picked ahead of a complete one.
+function tokenUsable(token, fields) {
+  if (!token || !token.value) return false;
+  const extras = token.extras || {};
+  return (fields || []).every(f => !f.required || extras[f.key]);
+}
+
+function authHeaderName(style) {
+  if (!style || style === "bearer") return "Authorization";
+  if (style === "x-api-key") return "x-api-key";
+  if (style === "api-key") return "api-key";
+  if (style.startsWith("header:")) return style.slice(7).trim() || null;
+  return null;
+}
+
+// One provider + one of its tokens → the URL, headers and query parameters an
+// upstream call needs. The single place credentials become a request.
+//
+// Query parameters are returned separately rather than glued onto `url`: callers
+// compose the request path afterwards, and a `?GroupId=…` already on the end
+// would stop the path join from recognising a trailing `/v1`.
+function resolveCredentialTarget(provider, token, baseUrl) {
+  const fields = parseCredentialFields(provider?.credential_fields);
+  const extras = token?.extras || {};
+  let url = String(baseUrl ?? provider?.base_url ?? "");
+  const headers = {};
+  const query = [];
+
+  for (const field of fields) {
+    const value = extras[field.key];
+    if (!value) continue;
+    if (field.target === "query") query.push([field.name, value]);
+    else if (field.target === "header") headers[field.name] = value;
+    else url = url.split(`{${field.key}}`).join(encodeURIComponent(value));
+  }
+
+  const style = provider?.auth_style || "bearer";
+  if (token?.value && style !== "none") {
+    if (style.startsWith("query:")) {
+      query.push([style.slice(6).trim(), token.value]);
+    } else {
+      const name = authHeaderName(style);
+      if (name) headers[name] = name === "Authorization" ? `Bearer ${token.value}` : token.value;
+    }
+  }
+
+  return { url, headers, query: query.filter(([name]) => name) };
+}
+
+// Append a credential's query parameters to an already-composed URL.
+function appendCredentialQuery(url, credential) {
+  if (!credential?.query?.length) return url;
+  const queryString = credential.query
+    .map(([name, value]) => encodeURIComponent(name) + "=" + encodeURIComponent(value))
+    .join("&");
+  return url + (url.includes("?") ? "&" : "?") + queryString;
+}
+
+// The headers carrying the CALLER's gateway key. These must never travel
+// upstream: the provider should see its own credentials, and a leftover
+// `Authorization: Bearer sk-<gateway>` would both leak the gateway key and sit
+// alongside the `api-key` header on providers that only accept the latter.
+const INBOUND_AUTH_HEADERS = ["authorization", "x-api-key", "x-goog-api-key"];
+
+function stripInboundAuth(headers) {
+  if (headers instanceof Headers) {
+    for (const name of INBOUND_AUTH_HEADERS) headers.delete(name);
+    return headers;
+  }
+  for (const key of Object.keys(headers)) {
+    if (INBOUND_AUTH_HEADERS.includes(key.toLowerCase())) delete headers[key];
+  }
+  return headers;
+}
+
+function applyCredentialHeaders(headers, credential) {
+  stripInboundAuth(headers);
+  for (const [name, value] of Object.entries(credential.headers)) {
+    if (headers instanceof Headers) headers.set(name, value);
+    else headers[name] = value;
+  }
+  return headers;
 }
 
 // ─── Token Selection Strategy ────────────────────────────────────────────
 // In-memory round-robin counters (per-isolate, reset on cold start — acceptable for CF Workers)
 const _roundRobinCounters = {};
 
-async function selectToken(tokens, strategy, providerId, env) {
-  // Filter to enabled tokens, preserving original indices for least-used tracking
+async function selectToken(tokens, strategy, providerId, env, fields) {
+  // Filter to enabled tokens, preserving original indices for least-used tracking.
+  // Tokens missing a required companion credential are excluded too — picking one
+  // would only produce a request that cannot succeed.
   const enabledTokens = tokens
     .map((t, i) => ({ ...t, _originalIndex: i }))
-    .filter(t => t.enabled && t.value);
+    .filter(t => t.enabled && tokenUsable(t, fields));
 
   if (enabledTokens.length === 0) return null;
   if (enabledTokens.length === 1) return enabledTokens[0];
@@ -3706,6 +4487,45 @@ async function selectToken(tokens, strategy, providerId, env) {
   }
 }
 
+// One provider + one token → the target an upstream call is built from. The base
+// URL already has this token's companion values substituted (Cloudflare's account
+// id, MiniMax's GroupId) and `headers` holds the credentials, so callers no longer
+// hand-roll `Authorization: Bearer <token>` — which is what made every non-Bearer
+// provider impossible to route.
+function buildTarget(provider, token, extra = {}) {
+  const credential = resolveCredentialTarget(provider, token);
+  return {
+    url: credential.url.replace(/\/$/, ""),
+    headers: credential.headers,
+    query: credential.query,
+    providerId: provider.id,
+    providerName: provider.name,
+    tokenIndex: token?._originalIndex,
+    // A base_url {placeholder} that no declared field filled cannot be served;
+    // naming it beats sending a request to a host literally called {account_id}.
+    missingFields: unfilledCredentialFields(provider, token),
+    ...extra,
+  };
+}
+
+// Pick a token that can actually serve a request and build its target. Returns
+// null when the provider has no such token.
+async function selectProviderTarget(provider, env, extra) {
+  const fields = parseCredentialFields(provider.credential_fields);
+  const token = await selectToken(
+    parseTokens(provider.tokens), provider.token_selection || 'round-robin', provider.id, env, fields
+  );
+  if (!token) return null;
+  return buildTarget(provider, token, extra);
+}
+
+// Human-readable reason a provider could not be used, so a routing failure says
+// which credential field is missing instead of "all providers failed".
+function credentialProblem(target) {
+  if (!target?.missingFields?.length) return "";
+  return `${target.providerName || "provider"} is missing credential field(s): ${target.missingFields.join(", ")}`;
+}
+
 async function renderAdminProviders(env) {
   const { results: customProviders } = await env.DB.prepare(
     "SELECT * FROM custom_providers ORDER BY created_at DESC"
@@ -3736,20 +4556,20 @@ async function renderAdminProviders(env) {
     const slug = p.slug || providerSlug(p.name);
 
     return `
-    <div class="provider-card" data-provider-id="${p.id}" data-name="${p.name}" data-slug="${slug}" data-enabled="${p.enabled}" style="background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);overflow:hidden;transition:var(--transition);${p.enabled ? '' : 'opacity:0.55;'}">
+    <div class="provider-card" data-provider-id="${p.id}" data-name="${escapeHtml(p.name)}" data-slug="${escapeHtml(slug)}" data-enabled="${p.enabled}" style="background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);overflow:hidden;transition:var(--transition);${p.enabled ? '' : 'opacity:0.55;'}">
       <a href="/admin/providers/${p.id}" style="text-decoration:none;color:inherit;display:block;padding:20px 24px;">
-        <div style="display:flex;align-items:center;gap:16px">
-          <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,${p.enabled ? 'rgba(16,185,129,0.12),rgba(59,130,246,0.12)' : 'rgba(148,163,184,0.06),rgba(148,163,184,0.04)'});display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1px solid ${p.enabled ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.1)'}">
-            🔌
+        <div class="pv-top" style="display:flex;align-items:center;gap:16px">
+          <div style="width:48px;height:48px;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid ${p.enabled ? 'rgba(16,185,129,0.25)' : 'rgba(148,163,184,0.2)'};position:relative;overflow:hidden">
+            ${customProviderLogoHTML(p, slug)}
           </div>
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-              <div style="font-size:15px;font-weight:700;color:var(--text-primary)">${p.name}</div>
+              <div style="font-size:15px;font-weight:700;color:var(--text-primary)">${escapeHtml(p.name)}</div>
               <span class="badge ${p.enabled ? 'badge-green' : 'badge-slate'}" style="font-size:9px">${p.enabled ? 'Active' : 'Disabled'}</span>
             </div>
-            <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'SF Mono',Consolas,monospace">${p.base_url}</div>
+            <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'SF Mono',Consolas,monospace">${escapeHtml(p.base_url)}</div>
           </div>
-          <div style="display:flex;align-items:center;gap:16px;flex-shrink:0">
+          <div class="pv-counts" style="display:flex;align-items:center;gap:16px;flex-shrink:0">
             <div style="text-align:center">
               <div style="font-size:18px;font-weight:800;color:var(--accent-blue)">${modelCount}</div>
               <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Models</div>
@@ -3772,7 +4592,7 @@ async function renderAdminProviders(env) {
         </form>
         <button type="button" class="btn btn-sm btn-secondary" onclick="testProvider('${p.id}')" style="font-size:11px;padding:4px 12px;border-radius:8px">Test</button>
         <div style="margin-left:auto;display:flex;gap:6px">
-          <form method="POST" action="/admin/providers/delete" onsubmit="return confirm('Delete provider \\'${p.name}\\'? This cannot be undone.')" style="display:inline">
+          <form method="POST" action="/admin/providers/delete" onsubmit="return confirm('Delete this provider? This cannot be undone.')" style="display:inline">
             <input type="hidden" name="id" value="${p.id}">
             <button type="submit" class="btn-icon danger" title="Delete" style="font-size:12px;padding:4px 8px">✕</button>
           </form>
@@ -3785,8 +4605,8 @@ async function renderAdminProviders(env) {
   const catalogCardsHTML = PROVIDER_CATALOG.map(p => `
     <div class="catalog-card" data-cat-id="${p.id}" data-cat="${p.category}" data-cat-name="${p.name.toLowerCase()}" data-cat-slug="${p.slug}" onclick="selectCatalogProvider('${p.id}')">
       <div class="catalog-card-inner">
-        <div class="catalog-logo" style="background:${p.color}20;border-color:${p.color}40">
-          <span style="color:${p.color};font-weight:800;font-size:${p.letter.length > 2 ? '11' : '14'}px">${p.letter}</span>
+        <div class="catalog-logo" style="background:#fff;border-color:${p.color}40">
+          ${catalogLogoHTML(p)}
         </div>
         <div class="catalog-card-body">
           <div class="catalog-card-name">${p.name}</div>
@@ -3854,7 +4674,7 @@ async function renderAdminProviders(env) {
       <!-- Add Provider Form -->
       <div id="addProviderSection" style="display:none;margin-bottom:24px;background:var(--bg-card);backdrop-filter:blur(12px);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:24px">
         <div id="catalog-prefill-banner" style="display:none;margin-bottom:16px;padding:12px 16px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;align-items:center;gap:12px">
-          <div id="prefill-logo" style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0"></div>
+          <div id="prefill-logo" style="width:36px;height:36px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;overflow:hidden"></div>
           <div style="flex:1;min-width:0">
             <div id="prefill-name" style="font-size:14px;font-weight:700;color:var(--text-primary)"></div>
             <div id="prefill-desc" style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
@@ -3866,7 +4686,7 @@ async function renderAdminProviders(env) {
         </h3>
         <form method="POST" action="/admin/providers/add" id="add-provider-form">
           <input type="hidden" name="catalog_id" id="catalog-id-field" value="">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="split-2">
             <div class="form-group">
               <label>Provider Name</label>
               <input type="text" name="name" id="provider-name-input" placeholder="e.g. My OpenAI Proxy" required>
@@ -3881,8 +4701,30 @@ async function renderAdminProviders(env) {
               <input type="url" name="base_url" id="provider-url-input" placeholder="https://api.example.com/v1" required>
             </div>
             <div class="form-group" style="grid-column:1/-1">
-              <label>API Tokens (one per line)</label>
+              <label id="tokens-label">API Tokens (one per line)</label>
               <textarea name="tokens" id="provider-tokens-input" placeholder="sk-token-1&#10;sk-token-2&#10;sk-token-3" required></textarea>
+              <small id="tokens-hint" style="color:var(--text-muted);font-size:11px;margin-top:6px;display:none"></small>
+            </div>
+            <details id="cred-fields-details" style="grid-column:1/-1">
+              <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);user-select:none">Companion credentials (advanced)</summary>
+              <div class="form-group" style="margin-top:10px">
+                <label>Credential fields</label>
+                <textarea name="credential_fields" id="provider-fields-input" rows="3" placeholder="key | Label | url|query|header | Wire-Name | optional,secret"></textarea>
+                <small style="color:var(--text-muted);font-size:11px;margin-top:6px;display:block">
+                  One per line. Extra values typed after each token, in this order. Only <code>key</code> is required;
+                  <code>url</code> fills a <code>{key}</code> placeholder in the Base URL, <code>query</code> appends a
+                  parameter, <code>header</code> sends a header. Fields marked <code>optional</code> may be left blank.
+                </small>
+              </div>
+            </details>
+            <div class="form-group" style="grid-column:1/-1">
+              <label>Token auth style</label>
+              <select name="auth_style" id="provider-auth-style">
+                <option value="bearer">Authorization: Bearer &lt;token&gt;</option>
+                <option value="x-api-key">x-api-key: &lt;token&gt;</option>
+                <option value="api-key">api-key: &lt;token&gt;</option>
+                <option value="none">No auth header (token is a companion field)</option>
+              </select>
             </div>
           </div>
           <div class="form-actions">
@@ -3893,7 +4735,7 @@ async function renderAdminProviders(env) {
       </div>
 
       <!-- Provider Cards Grid -->
-      <div id="provider-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:32px">
+      <div id="provider-grid" class="pv-grid">
         ${providerCards || '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px;background:var(--bg-card);border-radius:var(--radius-lg);border:1px dashed var(--border-medium);grid-column:1/-1">No providers yet. Pick one from the catalog below or click "+ Add Custom Provider".</div>'}
       </div>
     </div>
@@ -3971,6 +4813,8 @@ async function renderAdminProviders(env) {
         document.getElementById('catalog-id-field').value = '';
         document.getElementById('form-title-text').textContent = 'Add New Provider';
         document.getElementById('slug-preview').textContent = 'slug/model-name';
+        applyCredentialColumns([], 'bearer');
+        document.getElementById('provider-fields-input').value = '';
         section.style.display = 'block';
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
         document.getElementById('provider-name-input').focus();
@@ -3980,6 +4824,19 @@ async function renderAdminProviders(env) {
     }
 
     // ── Catalog filter & search ──
+    function logoDomain(website, baseUrl) {
+      function host(u){ try { var h = new URL(u).hostname.replace(/^www\./i, '').toLowerCase(); return /^[a-z0-9.-]+$/i.test(h) ? h : ''; } catch(e){ return ''; } }
+      var h = host(website) || host(baseUrl);
+      if (!h) return '';
+      var multi = ['co.uk','com.cn','net.cn','org.cn','gov.cn','com.au','co.jp','co.kr','ac.cn'];
+      var parts = h.split('.');
+      if (parts.length <= 2) return h;
+      if (multi.indexOf(parts.slice(-2).join('.')) >= 0) return parts.slice(-3).join('.');
+      return parts.slice(-2).join('.');
+    }
+    function logoImg(domain, pad) {
+      return '<img src="https://www.google.com/s2/favicons?domain=' + encodeURIComponent(domain) + '&sz=64" alt="" loading="lazy" style="width:100%;height:100%;object-fit:contain;position:absolute;inset:0;background:#fff;padding:' + pad + 'px;" onerror="this.remove()">';
+    }
     var CATALOG_DATA = ${JSON.stringify(PROVIDER_CATALOG)};
     var currentCatalogFilter = 'all';
 
@@ -4004,6 +4861,40 @@ async function renderAdminProviders(env) {
     }
 
     // ── Select catalog provider → open form pre-filled ──
+    // Spell out what each pasted line must contain when a provider needs
+    // companion credentials (Cloudflare: "token | account_id"). With no declared
+    // fields the form reads exactly as it did before.
+    function applyCredentialColumns(fields, authStyle) {
+      var list = fields || [];
+      var ta = document.getElementById('provider-tokens-input');
+      var hint = document.getElementById('tokens-hint');
+      var label = document.getElementById('tokens-label');
+      var keyInput = document.getElementById('provider-fields-input');
+      var authSel = document.getElementById('provider-auth-style');
+
+      if (list.length) {
+        var shape = ['sk-...'].concat(list.map(function(f) { return f.key; })).join(' | ');
+        ta.placeholder = shape + '\\n' + shape;
+        hint.textContent = 'One credential per line: ' + ['token'].concat(list.map(function(f) {
+          return f.key + (f.required === false ? ' (optional)' : '');
+        })).join(' | ');
+        hint.style.display = 'block';
+        label.textContent = 'Credentials (one per line)';
+      } else {
+        ta.placeholder = 'sk-token-1\\nsk-token-2\\nsk-token-3';
+        hint.style.display = 'none';
+        label.textContent = 'API Tokens (one per line)';
+      }
+
+      if (keyInput && fields) {
+        keyInput.value = list.map(function(f) {
+          var flags = [f.required === false ? 'optional' : '', f.secret ? 'secret' : ''].filter(Boolean).join(',');
+          return [f.key, f.label || f.key, f.target || 'url', f.name || f.key, flags].join(' | ');
+        }).join('\\n');
+      }
+      if (authSel && authStyle) authSel.value = authStyle;
+    }
+
     function selectCatalogProvider(id) {
       var p = CATALOG_DATA.find(x => x.id === id);
       if (!p) return;
@@ -4017,7 +4908,7 @@ async function renderAdminProviders(env) {
       banner.style.display = 'flex';
       document.getElementById('prefill-logo').style.background = p.color + '20';
       document.getElementById('prefill-logo').style.border = '1px solid ' + p.color + '40';
-      document.getElementById('prefill-logo').innerHTML = '<span style="color:' + p.color + ';font-weight:800;font-size:12px">' + p.letter + '</span>';
+      (function(){ var d = logoDomain(p.website, p.baseUrl); var letter = '<span style="color:' + p.color + ';font-weight:800;font-size:12px">' + p.letter + '</span>'; document.getElementById('prefill-logo').innerHTML = d ? (letter + logoImg(d, 5)) : letter; })();
       document.getElementById('prefill-name').textContent = p.name;
       document.getElementById('prefill-desc').textContent = p.description;
       var link = document.getElementById('prefill-link');
@@ -4031,6 +4922,7 @@ async function renderAdminProviders(env) {
       document.getElementById('catalog-id-field').value = p.id;
       document.getElementById('form-title-text').textContent = 'Add ' + p.name;
       document.getElementById('slug-preview').textContent = p.slug + '/model-name';
+      applyCredentialColumns(p.fields, p.authStyle);
 
       // Focus tokens field
       document.getElementById('provider-tokens-input').focus();
@@ -4075,7 +4967,7 @@ async function renderAdminProviders(env) {
       .catalog-card-inner{padding:14px 16px;display:flex;align-items:flex-start;gap:12px}
 
       /* ── Catalog Logo ── */
-      .catalog-logo{width:40px;height:40px;border-radius:10px;border:1px solid;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+      .catalog-logo{width:40px;height:40px;border-radius:10px;border:1px solid;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;overflow:hidden;background:#fff}
 
       /* ── Catalog Card Body ── */
       .catalog-card-body{flex:1;min-width:0}
@@ -4966,8 +5858,8 @@ async function renderAdminTokens(env, url) {
     const lastUsed = t.last_used_at ? new Date(t.last_used_at + 'Z').toLocaleDateString() : 'Never';
     const created = t.created_at ? new Date(t.created_at + 'Z').toLocaleDateString() : 'Unknown';
 
-    return `<tr data-name="${(t.name || '').toLowerCase()}">
-      <td><strong>${t.name}</strong></td>
+    return `<tr data-name="${escapeHtml((t.name || '').toLowerCase())}">
+      <td><strong>${escapeHtml(t.name)}</strong></td>
       <td><span class="mono" style="color:var(--accent-cyan)">${t.key_prefix}</span></td>
       <td>${statusBadge}</td>
       <td style="color:var(--text-secondary)">${created}</td>
@@ -4980,7 +5872,7 @@ async function renderAdminTokens(env, url) {
               ${t.enabled === 1 ? '⏸' : '▶'}
             </button>
           </form>
-          <button class="btn-icon edit" title="Rename" onclick="openRenameModal(${t.id}, '${(t.name || '').replace(/'/g, "\\'")}')">✏️</button>
+          <button class="btn-icon edit" title="Rename" data-name="${escapeHtml(t.name || '')}" onclick="openRenameModal(${t.id}, this)">✏️</button>
           <form method="POST" action="/admin/tokens/delete" style="display:inline" onsubmit="return confirm('Delete this token?')">
             <input type="hidden" name="id" value="${t.id}">
             <button type="submit" class="btn-icon danger" title="Delete">🗑</button>
@@ -5003,7 +5895,7 @@ async function renderAdminTokens(env, url) {
 
     <div class="page-header">
       <div class="page-header-left">
-        <h2>🔑 API Tokens</h2>
+        <h2>API Tokens</h2>
         <p>Manage API keys for proxy access</p>
       </div>
       <div class="page-header-actions">
@@ -5052,7 +5944,7 @@ async function renderAdminTokens(env, url) {
     </div>
 
     <div style="margin-top:24px;padding:16px;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius)">
-      <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">📖 Usage</h3>
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">Usage</h3>
       <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Include your API key in requests:</p>
       <pre style="background:rgba(0,0,0,0.3);padding:12px;border-radius:8px;font-size:12px;color:var(--accent-cyan);overflow-x:auto">curl -H "Authorization: Bearer sk-your-key-here" https://your-worker.dev/v1/chat/completions</pre>
     </div>
@@ -5117,9 +6009,9 @@ async function renderAdminTokens(env, url) {
         row.style.display = name.includes(q) ? '' : 'none';
       });
     }
-    function openRenameModal(id, name) {
+    function openRenameModal(id, btn) {
       document.getElementById('rn-id').value = id;
-      document.getElementById('rn-name').value = name;
+      document.getElementById('rn-name').value = (btn && btn.dataset && btn.dataset.name) || '';
       document.getElementById('renameTokenModal').classList.add('show');
     }
     </script>
@@ -5184,7 +6076,7 @@ async function renderAdminDocs(env) {
 
   <!-- Base URL -->
   <div class="docs-section">
-    <h2>🔗 Base URL</h2>
+    <h2>Base URL</h2>
     <div class="base-url-box">
       <span class="url" id="baseUrl"></span>
       <button class="copy-btn" onclick="copyText(document.getElementById('baseUrl').textContent)">📋 Copy</button>
@@ -5193,7 +6085,7 @@ async function renderAdminDocs(env) {
 
   <!-- Authentication -->
   <div class="docs-section">
-    <h2>🔐 Authentication</h2>
+    <h2>Authentication</h2>
     <div class="auth-box">
       <div class="label">Send your API key in whichever header your client uses — all three are accepted:</div>
       <div class="code-wrapper">
@@ -5210,7 +6102,7 @@ x-goog-api-key: sk-your-api-key-here        # Gemini SDK</code></pre>
 
   <!-- Connect a coding agent -->
   <div class="docs-section">
-    <h2>🤖 Connect a Coding Agent</h2>
+    <h2>Connect a Coding Agent</h2>
     <div class="info-card">
       <p>Claude Code and Cline drive every file edit and shell command through <strong>tool calls</strong>. The gateway supports tool calling on all three dialects, in streaming and non-streaming mode. You need three things:</p>
       <table class="param-table">
@@ -5299,13 +6191,13 @@ claude</code></pre>
     </div>
 
     <div class="info-card">
-      <p><strong>Agent hangs with no output?</strong> Check the provider's Base URL ends in <code>/v1</code> and its token is valid — test it from the <a href="/admin/playground" style="color:var(--accent)">Playground</a>. <strong><code>404 Unknown provider slug?</code></strong> The error lists the slugs that exist; check the <a href="/admin/providers" style="color:var(--accent)">Providers</a> page.</p>
+      <p><strong>Agent hangs with no output?</strong> Check the provider's Base URL ends in <code>/v1</code> and its token is valid — test it from the <a href="/admin/playground" style="color:var(--accent)">Playground</a>. <strong><code>404 Unknown provider slug?</code></strong> The error lists the slugs that exist; check the <a href="/admin/providers" style="color:var(--accent)">Providers</a> page. <strong><code>400</code> naming a credential field?</strong> That provider needs a second value on every key (an account id, a resource name) — add it on the key in the <a href="/admin/providers" style="color:var(--accent)">Providers</a> page.</p>
     </div>
   </div>
 
   <!-- Endpoints -->
   <div class="docs-section">
-    <h2>📡 Endpoints</h2>
+    <h2>Endpoints</h2>
 
     <!-- GET /v1/models -->
     <div class="endpoint-card">
@@ -5637,7 +6529,7 @@ claude</code></pre>
 
   <!-- Model ID Format -->
   <div class="docs-section">
-    <h2>🏷️ Model ID Format</h2>
+    <h2>Model ID Format</h2>
     <div class="info-card">
       <p>Models are addressed using the format <code>provider-slug/model-name</code>. The provider slug is the name you gave when adding the provider.</p>
     </div>
@@ -5652,7 +6544,7 @@ my-provider/llama-3-8b</code></pre>
 
   <!-- Streaming -->
   <div class="docs-section">
-    <h2>⚡ Streaming</h2>
+    <h2>Streaming</h2>
     <div class="info-card">
       <p>Set <code>"stream": true</code> in your request to receive Server-Sent Events (SSE). The response will be streamed chunk by chunk. Works with all three API formats (OpenAI, Anthropic, Gemini).</p>
     </div>
@@ -5672,7 +6564,7 @@ my-provider/llama-3-8b</code></pre>
 
   <!-- JavaScript / Python Examples -->
   <div class="docs-section">
-    <h2>💻 Quick Examples</h2>
+    <h2>Quick Examples</h2>
 
     <h3>JavaScript (fetch)</h3>
     <div class="code-wrapper">
@@ -5794,18 +6686,32 @@ async function renderProviderDetail(id, env, url) {
 
   const p = customProviders[0];
   const tokens = parseTokens(p.tokens);
+  const credFields = parseCredentialFields(p.credential_fields);
   const models = JSON.parse(p.fetched_models || "[]");
   let disabledModels;
   try { disabledModels = new Set(JSON.parse(p.disabled_models || "[]")); } catch { disabledModels = new Set(); }
   const enabledCount = tokens.filter(t => t.enabled).length;
   const totalCount = tokens.length;
 
-  // Token rows
-  const tokenRows = tokens.map((t, i) => `
+  // Token rows. Each credential's companion values (Cloudflare's account id,
+  // Modal's secret) are shown next to the token, and a token that is missing one
+  // is flagged, because selectToken will skip it rather than send a request that
+  // cannot work. They are shown in full, exactly as the token above them is:
+  // this page is admin-only and already renders every provider key in the clear,
+  // and masking only in the chip would still leave the value in the edit
+  // button's data attribute. `secret` drives a password input in the modal.
+  const tokenRows = tokens.map((t, i) => {
+    const missing = tokenUsable(t, credFields) ? [] : credFields.filter(f => f.required && !(t.extras || {})[f.key]);
+    const chips = credFields
+      .filter(f => t.extras && t.extras[f.key])
+      .map(f => `<span style="font-size:10px;padding:2px 7px;border-radius:99px;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.25);color:var(--accent-blue);white-space:nowrap">${escapeHtml(f.label)}: ${escapeHtml(t.extras[f.key])}</span>`)
+      .join(" ");
+    return `
     <div class="token-row" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);${t.enabled ? '' : 'opacity:0.5;'}">
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:500;color:var(--text-primary);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'SF Mono',Consolas,monospace">${t.value}</div>
-        ${t.name ? `<div style="font-size:11px;color:var(--text-muted)">${t.name}</div>` : ''}
+        <div style="font-size:13px;font-weight:500;color:var(--text-primary);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'SF Mono',Consolas,monospace">${escapeHtml(t.value)}</div>
+        ${t.name ? `<div style="font-size:11px;color:var(--text-muted)">${escapeHtml(t.name)}</div>` : ''}
+        ${chips || missing.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${chips}${missing.length ? `<span style="font-size:10px;padding:2px 7px;border-radius:99px;background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.3);color:var(--accent-rose)">missing ${escapeHtml(missing.map(f => f.label).join(", "))} — not used for routing</span>` : ""}</div>` : ''}
       </div>
       <form method="POST" action="/admin/providers/toggle-token" style="display:inline">
         <input type="hidden" name="provider_id" value="${p.id}">
@@ -5816,14 +6722,15 @@ async function renderProviderDetail(id, env, url) {
           <span class="slider"></span>
         </label>
       </form>
-      <button type="button" class="btn-icon edit" onclick='openTokenModal(${p.id},${i},${JSON.stringify(t.value)},${JSON.stringify(t.name || "")})' title="Edit token">✏️</button>
+      <button type="button" class="btn-icon edit" data-tv="${escapeHtml(t.value)}" data-tn="${escapeHtml(t.name || "")}" data-ex="${escapeHtml(JSON.stringify(t.extras || {}))}" onclick='openTokenModal(${p.id},${i},this)' title="Edit token">✏️</button>
       <form method="POST" action="/admin/providers/delete-token" onsubmit="return confirm('Remove this token?')" style="display:inline">
         <input type="hidden" name="provider_id" value="${p.id}">
         <input type="hidden" name="token_index" value="${i}">
         <button type="submit" class="btn-icon danger" title="Remove token">✕</button>
       </form>
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   // Model rows with full details
   const providerSlugVal = p.slug || providerSlug(p.name);
@@ -5832,14 +6739,14 @@ async function renderProviderDetail(id, env, url) {
         const rawId = typeof m === "string" ? m : m.id;
         const fullId = `${providerSlugVal}/${rawId}`;
         const contextWindow = typeof m === "object" ? m.context_window : null;
-        const caps = typeof m === "object" ? m.capabilities : {};
+        const caps = (typeof m === "object" && m.capabilities) || {};
         const capBadges = [];
         if (caps.reasoning) capBadges.push('<span class="badge badge-purple" style="font-size:10px">🧠 Reasoning</span>');
         if (caps.vision) capBadges.push('<span class="badge badge-cyan" style="font-size:10px">👁️ Vision</span>');
         const isHidden = disabledModels.has(rawId);
         return `<div class="model-row" id="model-row-${idx}" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);transition:var(--transition)${isHidden ? ';opacity:0.55' : ''}">
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:600;color:var(--text-primary);font-family:'SF Mono',Consolas,monospace;margin-bottom:4px;word-break:break-all">${fullId}</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-primary);font-family:'SF Mono',Consolas,monospace;margin-bottom:4px;word-break:break-all">${escapeHtml(fullId)}</div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               ${contextWindow ? `<span class="badge badge-slate" style="font-size:10px">${(contextWindow/1000).toFixed(0)}k ctx</span>` : ''}
               ${capBadges.join('')}
@@ -5849,11 +6756,11 @@ async function renderProviderDetail(id, env, url) {
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
             <span id="model-status-${idx}" style="font-size:14px;width:20px;text-align:center"></span>
             <label class="toggle toggle-sm" title="${isHidden ? 'Hidden from /models — click to show' : 'Visible at /models — click to hide'}">
-              <input type="checkbox" data-idx="${idx}" ${isHidden ? '' : 'checked'} onchange='toggleModelVisibility(${p.id}, ${JSON.stringify(rawId)}, this)'>
+              <input type="checkbox" data-idx="${idx}" ${isHidden ? '' : 'checked'} data-mid="${escapeHtml(rawId)}" onchange='toggleModelVisibility(${p.id}, this)'>
               <span class="slider"></span>
             </label>
-            <button type="button" class="btn-icon" onclick="copyModelId('${fullId}', this)" title="Copy model ID">📋</button>
-            <button type="button" class="btn-icon fetch" onclick="testSingleModel(${p.id}, '${rawId}', ${idx})" title="Test model" id="test-btn-${idx}">▶</button>
+            <button type="button" class="btn-icon" data-mid="${escapeHtml(fullId)}" onclick="copyModelId(this)" title="Copy model ID">📋</button>
+            <button type="button" class="btn-icon fetch" data-mid="${escapeHtml(rawId)}" onclick="testSingleModel(${p.id}, this, ${idx})" title="Test model" id="test-btn-${idx}">▶</button>
           </div>
         </div>`;
       }).join("")
@@ -5893,11 +6800,16 @@ async function renderProviderDetail(id, env, url) {
             Providers
           </a>
         </div>
-        <h2>${p.name}</h2>
-        <p style="font-family:'SF Mono',Consolas,monospace;font-size:12px;color:var(--text-muted);margin-top:4px">${p.base_url}</p>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:52px;height:52px;border-radius:14px;background:#fff;border:1px solid var(--border-subtle);position:relative;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center">${customProviderLogoHTML(p, providerSlugVal)}</div>
+          <div style="min-width:0">
+            <h2>${escapeHtml(p.name)}</h2>
+            <p style="font-family:'SF Mono',Consolas,monospace;font-size:12px;color:var(--text-muted);margin-top:4px">${escapeHtml(p.base_url)}</p>
+          </div>
+        </div>
       </div>
       <div class="page-header-actions">
-        <button type="button" class="btn btn-secondary" onclick='openEditProviderModal(${p.id},${JSON.stringify(p.name)},${JSON.stringify(p.slug || providerSlug(p.name))},${JSON.stringify(p.base_url)})'>✏️ Edit</button>
+        <button type="button" class="btn btn-secondary" data-nm="${escapeHtml(p.name)}" data-sl="${escapeHtml(p.slug || providerSlug(p.name))}" data-bu="${escapeHtml(p.base_url)}" onclick='openEditProviderModal(${p.id},this)'>✏️ Edit</button>
         <form method="POST" action="/admin/providers/delete" onsubmit="return confirm('Delete this provider and all its tokens? This cannot be undone.')" style="display:inline">
           <input type="hidden" name="id" value="${p.id}">
           <button type="submit" class="btn btn-danger">🗑️ Delete</button>
@@ -5931,7 +6843,7 @@ async function renderProviderDetail(id, env, url) {
       </div>
       <div class="stat-card cyan">
         <div class="label">Provider ID</div>
-        <div class="value" style="font-size:18px;font-family:'SF Mono',Consolas,monospace">${p.slug || providerSlug(p.name)}</div>
+        <div class="value" style="font-size:18px;font-family:'SF Mono',Consolas,monospace">${escapeHtml(p.slug || providerSlug(p.name))}</div>
       </div>
     </div>
 
@@ -5949,6 +6861,38 @@ async function renderProviderDetail(id, env, url) {
       </div>
     </div>
 
+    <!-- Companion Credentials Section -->
+    <div class="form-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Companion Credentials
+        </h3>
+        <button type="button" class="btn btn-sm btn-secondary" data-nm="${escapeHtml(p.name)}" data-sl="${escapeHtml(p.slug || providerSlug(p.name))}" data-bu="${escapeHtml(p.base_url)}" onclick='openEditProviderModal(${p.id},this)'>Configure</button>
+      </div>
+      ${credFields.length ? `
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.7;margin-bottom:12px">
+          This provider needs more than one value per key, entered alongside each token above — in this order:
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${credFields.map(f => `
+            <div style="display:flex;align-items:center;gap:10px;font-size:12px;padding:8px 12px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle)">
+              <code style="color:var(--accent-cyan);font-size:11px">${escapeHtml(f.key)}</code>
+              <span style="color:var(--text-secondary)">${escapeHtml(f.label)}</span>
+              <span style="margin-left:auto;font-size:10px;color:var(--text-muted);font-family:'SF Mono',Consolas,monospace">${f.target === "url" ? "URL path" : f.target === "query" ? "query ?" + escapeHtml(f.name) : "header " + escapeHtml(f.name)}${f.required ? "" : " · optional"}${f.secret ? " · secret" : ""}</span>
+            </div>`).join("")}
+        </div>` : `
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.7">
+          A single key is enough for this provider. If it needs a second per-key value (an account id, a workspace
+          host, an extra header), declare it here and it will be requested alongside every token.
+        </div>`}
+      ${unfilledCredentialFields(p, { extras: {} }).length ? `
+        <div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);font-size:12px;color:var(--text-secondary);line-height:1.6">
+          The Base URL still contains <code>${escapeHtml(unfilledCredentialFields(p, { extras: {} }).map(k => "{" + k + "}").join(" "))}</code>.
+          Each token's ${escapeHtml(credFields.map(f => f.label).join(" / ") || "companion value")} fills it at request time.
+        </div>` : ""}
+    </div>
+
     <!-- Models Section -->
     <div class="form-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -5962,7 +6906,7 @@ async function renderProviderDetail(id, env, url) {
           ${Array.isArray(models) && models.length > 1 ? '<button type="button" class="btn btn-sm btn-primary" onclick="testAllModels()" id="test-all-btn">🧪 Test All</button>' : ''}
         </div>
       </div>
-      <div id="models-list" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${modelRows}</div>
+      <div id="models-list" class="models-grid">${modelRows}</div>
       <div id="test-all-progress" style="display:none;margin-top:16px;padding:12px 16px;border-radius:10px;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.15)"></div>
     </div>
 
@@ -6014,6 +6958,28 @@ async function renderProviderDetail(id, env, url) {
           <div class="form-group" style="margin-bottom:20px">
             <label>Base URL</label>
             <input type="url" id="ep-url" name="base_url" required>
+            <small style="color:var(--text-muted);font-size:11px;margin-top:4px;display:block">A <code>{key}</code> placeholder is filled from each token's companion credentials.</small>
+          </div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Token auth style</label>
+            <select id="ep-auth-style" name="auth_style" style="width:100%;padding:10px 14px;background:var(--glass-bg);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);font-size:13px;cursor:pointer">
+              <option value="bearer">Authorization: Bearer &lt;token&gt;</option>
+              <option value="x-api-key">x-api-key: &lt;token&gt;</option>
+              <option value="api-key">api-key: &lt;token&gt;</option>
+              <option value="none">No auth header (token is a companion field)</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:20px">
+            <label>Companion credential fields</label>
+            <textarea id="ep-fields" name="credential_fields" rows="3" placeholder="key | Label | url|query|header | Wire-Name | optional,secret"></textarea>
+            <small style="color:var(--text-muted);font-size:11px;margin-top:6px;display:block">
+              One per line, in the order they are typed after each token. Only <code>key</code> is required.
+              <code>url</code> fills <code>{key}</code> in the Base URL, <code>query</code> appends a parameter,
+              <code>header</code> sends a header.
+            </small>
+          </div>
+          <div style="margin-bottom:20px;padding:10px 14px;border-radius:8px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.25);font-size:11px;color:var(--text-secondary);line-height:1.6">
+            API tokens are managed on the provider page and are not touched by this form.
           </div>
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save Changes</button>
@@ -6037,6 +7003,7 @@ async function renderProviderDetail(id, env, url) {
             <label>Token Value</label>
             <input type="text" id="et-token-value" name="token_value" required style="font-family:'SF Mono',Consolas,monospace;font-size:12px">
           </div>
+          <div id="et-extras"></div>
           <div class="form-group" style="margin-bottom:20px">
             <label>Name (optional)</label>
             <input type="text" id="et-token-name" name="token_name" placeholder="e.g. Production key">
@@ -6062,6 +7029,7 @@ async function renderProviderDetail(id, env, url) {
             <label>Token Value</label>
             <input type="text" name="token_value" required placeholder="sk-..." style="font-family:'SF Mono',Consolas,monospace;font-size:12px">
           </div>
+          <div id="at-extras"></div>
           <div class="form-group" style="margin-bottom:20px">
             <label>Name (optional)</label>
             <input type="text" name="token_name" placeholder="e.g. Production key">
@@ -6096,14 +7064,24 @@ async function renderProviderDetail(id, env, url) {
     <script>
     const PROVIDER_ID = ${p.id};
     const PROVIDER_URL = '${encodeURIComponent(p.base_url)}';
-    const PROVIDER_SLUG = '${providerSlugVal}';
+    const CRED_FIELDS = ${JSON.stringify(credFields).replace(/</g, "\\u003c")};
+    const PROVIDER_AUTH_STYLE = ${JSON.stringify(p.auth_style || "bearer").replace(/</g, "\\u003c")};
+    const PROVIDER_SLUG = ${JSON.stringify(providerSlugVal).replace(/</g, "\u003c")};
 
-    function openEditProviderModal(id, name, slug, url) {
+    function openEditProviderModal(id, btn) {
+      var name = (btn && btn.dataset && btn.dataset.nm) || '';
+      var slug = (btn && btn.dataset && btn.dataset.sl) || '';
+      var url = (btn && btn.dataset && btn.dataset.bu) || '';
       document.getElementById('ep-id').value = id;
       document.getElementById('ep-name').value = name;
       document.getElementById('ep-slug').value = slug || '';
       document.getElementById('ep-slug-preview').textContent = (slug || 'provider') + '/model-name';
       document.getElementById('ep-url').value = url;
+      document.getElementById('ep-auth-style').value = PROVIDER_AUTH_STYLE;
+      document.getElementById('ep-fields').value = CRED_FIELDS.map(function(f) {
+        var flags = [(f.required === false ? 'optional' : ''), (f.secret ? 'secret' : '')].filter(Boolean).join(',');
+        return [f.key, f.label || f.key, f.target || 'url', f.name || f.key, flags].join(' | ');
+      }).join('\\n');
       document.getElementById('editProviderModal').classList.add('show');
     }
     document.getElementById('ep-name').addEventListener('input', function() {
@@ -6115,22 +7093,53 @@ async function renderProviderDetail(id, env, url) {
     document.getElementById('ep-slug').addEventListener('input', function() {
       this.dataset.touched = 'true';
     });
-    function openTokenModal(providerId, tokenIndex, tokenValue, tokenName) {
+    function escHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    // One input per declared companion field. The handler reads them back by
+    // their extra_<key> names, so it never needs the provider's field list.
+    function credentialInputsHTML(prefix, extras) {
+      if (!CRED_FIELDS.length) return '';
+      return CRED_FIELDS.map(function(f, i) {
+        var where = f.target === 'url'
+          ? 'Fills {' + f.key + '} in the Base URL'
+          : f.target === 'query'
+            ? 'Sent as the ?' + f.name + '= parameter'
+            : 'Sent as the ' + f.name + ' header';
+        return '<div class="form-group" style="margin-bottom:16px">'
+          + '<label>' + escHtml(f.label) + (f.required === false ? ' <span style="color:var(--text-muted);font-weight:400">(optional)</span>' : '') + '</label>'
+          + '<input type="' + (f.secret ? 'password' : 'text') + '" id="' + prefix + '-extra-' + i + '"'
+          + ' name="extra_' + escHtml(f.key) + '" class="mono"'
+          + (f.required === false ? '' : ' required')
+          + ' value="' + escHtml((extras && extras[f.key]) || '') + '"'
+          + ' placeholder="' + escHtml(f.placeholder || f.key) + '">'
+          + '<small style="color:var(--text-muted);font-size:11px;margin-top:4px;display:block">' + where + '</small>'
+          + '</div>';
+      }).join('');
+    }
+    function openTokenModal(providerId, tokenIndex, btn) {
       document.getElementById('et-provider-id').value = providerId;
       document.getElementById('et-token-index').value = tokenIndex;
-      document.getElementById('et-token-value').value = tokenValue;
-      document.getElementById('et-token-name').value = tokenName;
+      document.getElementById('et-token-value').value = (btn && btn.dataset && btn.dataset.tv) || '';
+      document.getElementById('et-token-name').value = (btn && btn.dataset && btn.dataset.tn) || '';
+      var extras = {};
+      try { extras = JSON.parse((btn && btn.dataset && btn.dataset.ex) || '{}'); } catch (e) { extras = {}; }
+      document.getElementById('et-extras').innerHTML = credentialInputsHTML('et', extras);
       document.getElementById('editTokenModal').classList.add('show');
     }
     function openAddTokenModal(providerId) {
       document.getElementById('at-provider-id').value = providerId;
+      document.getElementById('at-extras').innerHTML = credentialInputsHTML('at', {});
       document.getElementById('addTokenModal').classList.add('show');
     }
 
     // ── Model visibility (hide/show at /models) ──
     // Hides the model from the public /models listing only. Direct calls to the
     // model ID keep routing exactly as before.
-    async function toggleModelVisibility(providerId, modelId, checkbox) {
+    async function toggleModelVisibility(providerId, checkbox) {
+      var modelId = (checkbox && checkbox.dataset && checkbox.dataset.mid) || '';
       const wanted = checkbox.checked;
       const status = document.getElementById('model-status-' + checkbox.dataset.idx);
       const row = document.getElementById('model-row-' + checkbox.dataset.idx);
@@ -6164,7 +7173,8 @@ async function renderProviderDetail(id, env, url) {
     }
 
     // ── Copy Model ID ──
-    function copyModelId(id, btn) {
+    function copyModelId(btn) {
+      var id = (btn && btn.dataset && btn.dataset.mid) || '';
       navigator.clipboard.writeText(id).then(() => {
         const orig = btn.textContent;
         btn.textContent = '✅';
@@ -6173,6 +7183,9 @@ async function renderProviderDetail(id, env, url) {
     }
 
     // ── Fetch Models (AJAX) ──
+    // Upstream error text is untrusted — escape before innerHTML.
+    function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
     async function fetchModelsAjax() {
       const btn = document.getElementById('fetch-models-btn');
       const list = document.getElementById('models-list');
@@ -6190,13 +7203,13 @@ async function renderProviderDetail(id, env, url) {
         if (resp.ok && data.models && data.models.length > 0) {
           window.location.reload();
         } else {
-          list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--accent-rose);font-size:12px">' + (data.error || 'No models found') + '</div>';
+          list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--accent-rose);font-size:12px">' + esc(data.error || 'No models found') + '</div>';
           btn.disabled = false;
           btn.innerHTML = '↻ Fetch Models';
           btn.style.opacity = '1';
         }
       } catch (e) {
-        list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--accent-rose);font-size:12px">Error: ' + e.message + '</div>';
+        list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--accent-rose);font-size:12px">Error: ' + esc(e.message) + '</div>';
         btn.disabled = false;
         btn.innerHTML = '↻ Fetch Models';
         btn.style.opacity = '1';
@@ -6212,18 +7225,18 @@ async function renderProviderDetail(id, env, url) {
       toast.style.cssText = 'position:fixed;top:24px;right:24px;z-index:999;padding:14px 20px;border-radius:12px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 8px 32px rgba(0,0,0,0.4);animation:toastIn 0.3s ease;max-width:400px;word-break:break-word;backdrop-filter:blur(12px)';
       if (type === 'success') {
         toast.style.background = 'rgba(16,185,129,0.9)';
-        toast.innerHTML = '✅ ' + message;
+        toast.textContent = '✅ ' + message;
       } else {
         toast.style.background = 'rgba(244,63,94,0.9)';
-        toast.innerHTML = '❌ ' + message;
+        toast.textContent = '❌ ' + message;
       }
       document.body.appendChild(toast);
       setTimeout(() => { toast.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => toast.remove(), 300); }, 3000);
     }
 
     // ── Test Single Model ──
-    async function testSingleModel(providerId, modelId, idx) {
-      const btn = document.getElementById('test-btn-' + idx);
+    async function testSingleModel(providerId, btn, idx) {
+      var modelId = (btn && btn.dataset && btn.dataset.mid) || '';
       const status = document.getElementById('model-status-' + idx);
       const row = document.getElementById('model-row-' + idx);
       btn.disabled = true;

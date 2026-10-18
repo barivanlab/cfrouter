@@ -76,6 +76,7 @@ dialect your client expects.
 | **Claude Code Ready** | `/v1/messages`, `/v1/messages/count_tokens`, and `x-api-key` auth — set `ANTHROPIC_BASE_URL` and go |
 | **Multi-Provider Load Balancing** | `slug/model` routing across unlimited providers, each with multiple API keys |
 | **4 key strategies** | `round-robin`, `random`, `least-used`, `sequential` — configurable per provider |
+| **Companion Credentials** | Providers that need more than a key (`account_id`, resource name, a second header) get those per key — round-robin across accounts, not one provider per account |
 | **Automatic Failover** | `401/403/429/5xx` from one provider → transparent retry against the next; terminal errors (`400/404/422`) fail fast |
 | **Admin Dashboard** | 7-tab web UI: analytics, health, providers, models, playground, tokens, docs |
 | **79-provider catalog** | One-click presets across frontier labs, inference hosts, gateways, regional, enterprise, and media providers |
@@ -147,6 +148,9 @@ Your gateway is live at `https://cfrouter.<your-subdomain>.workers.dev` 🎉
 4. Enter your provider details (name, base URL, API keys)
 5. Click **Fetch Models** to discover available models
 6. Under **Tokens**, create an API token for your clients (starts with `sk-`)
+
+> Providers that need a second value per key (Cloudflare account id, Azure resource,
+> …) are covered in [Companion credentials](#companion-credentials-per-key).
 
 > **No CLI?** Skip to [Install via Cloudflare Dashboard](#️-install-via-cloudflare-dashboard-no-cli-required) — or simply
 > visit `/setup` on first run and set the admin password in the browser.
@@ -587,6 +591,66 @@ Each provider picks one strategy for rotating its API keys:
 Change it in the provider's detail page; it applies to OpenAI, Anthropic, and
 Gemini requests alike.
 
+### Companion credentials (per key)
+
+Some providers need a **second value next to the API key**, and that value differs
+per key — Cloudflare Workers AI puts the account id in the URL path, Azure OpenAI
+puts the resource name in the host and the key in an `api-key` header, Modal wants
+two headers. CFRouter stores those as **companion fields on each key**, so one
+provider row can round-robin across several accounts instead of one row per account.
+
+Catalog presets declare what they need — selecting one rewrites the hint under the
+tokens box to spell out the columns:
+
+| Preset | Companion fields |
+|---|---|
+| Cloudflare Workers AI | `account_id` → URL path |
+| Azure OpenAI | `resource` → host; key sent as `api-key` |
+| Snowflake Cortex | `account` → host |
+| Modal | `app` → host; key sent as `Modal-Key`, companion secret as `Modal-Secret` |
+| OpenAI | `OpenAI-Organization`, `OpenAI-Project` (optional) |
+
+**Bulk entry** — one credential per line, `|`-separated, in the order the provider
+declares them (just the key when it declares none):
+
+```
+cf-token-1 | 1a2b3c4d5e6f7890
+cf-token-2 | 9f8e7d6c5b4a3210
+```
+
+A line with the wrong number of columns is rejected with its line number, instead of
+silently storing a key with a missing account. The Add/Edit Token modals ask for the
+same fields one at a time (secret ones as password inputs).
+
+**Any provider can declare its own** — in the provider's detail page, one field per
+line in the credential-fields editor:
+
+```
+key | Label | url|query|header | Header-Name | optional,secret
+```
+
+`key` is the only required column; the rest default to `url` for the target, the key
+itself for the label and wire name, and `required`. Where a field lands:
+
+| Target | Effect |
+|---|---|
+| `url` | Replaces `{key}` in the provider's Base URL (e.g. `.../accounts/{account_id}/ai/v1`) |
+| `query` | Appended to the URL as `?key=value` |
+| `header` | Sent as the named header |
+
+The adjacent **auth style** setting controls how the key itself is sent: `bearer`
+(default), `x-api-key`, `api-key`, `header:<Name>`, `query:<param>`, `none`.
+
+Keys missing a required companion field are **skipped by the router** — a
+half-configured key never gets picked ahead of a good one — and a request that names
+that provider answers `400` saying which field is missing.
+
+> **Not supported:** providers that sign each request or exchange the key for a
+> short-lived token — AWS Bedrock (SigV4), Vertex AI service-account OAuth, Tencent
+> Cloud (TC3), Baidu (legacy OAuth exchange), Snowflake key-pair auth, Azure Entra
+> ID. Those need per-request crypto a Worker config can't express here; use a plain
+> key wherever the provider offers one.
+
 ### Custom Domain (Optional)
 
 To use your own domain instead of `*.workers.dev`:
@@ -606,7 +670,7 @@ The gateway creates its own tables on first request — no migrations to run:
 
 | Table | Purpose |
 |---|---|
-| `custom_providers` | Providers: name, slug, base URL, keys, strategy, cached models |
+| `custom_providers` | Providers: name, slug, base URL, keys (+ companion credentials), auth style, strategy, cached models |
 | `api_keys` | Gateway tokens (SHA-256 hash + prefix stored, never the raw key) |
 | `token_usage` | Per-provider, per-key call counts (drives `least-used`) |
 | `usage_summary` | Daily per-token, per-model usage for analytics |

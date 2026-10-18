@@ -3,6 +3,45 @@
 All notable changes to CFRouter are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+Per-key companion credentials.
+
+### Added
+- **Companion credentials per key.** Providers that need a second value alongside
+  the API key — Cloudflare Workers AI `account_id`, Azure OpenAI resource, Snowflake
+  account, Modal app + secret headers, OpenAI org/project — now store it on each key
+  (`{ value, enabled, name, extras: { account_id: "…" } }`), so one provider row can
+  round-robin across several accounts instead of one row per account. New
+  `credential_fields` and `auth_style` columns on `custom_providers`, created and
+  migrated automatically on first request.
+- `auth_style` per provider: `bearer` (default), `x-api-key`, `api-key`,
+  `header:<Name>`, `query:<param>`, `none`.
+- Credential-field targets — `url` (fills a `{placeholder}` in the Base URL),
+  `query`, `header` — and an editor on the provider detail page so **any** custom
+  provider can declare its own, one per line:
+  `key | Label | url|query|header | Header-Name | optional,secret`.
+- Bulk token entry accepts `token | account_id | …` lines, columns in the provider's
+  declared order; selecting a catalog preset rewrites the hint under the tokens box.
+  A line with the wrong column count is rejected with its line number rather than
+  storing a key with a missing account.
+- Token rows show their companion values, and the Add/Edit Token modals render one
+  input per declared field (password-type when the field is marked `secret`).
+- `providerUnusableReason` / `credentialFailureResponse` — a request naming a
+  provider whose keys cannot complete a call answers `400` naming the missing field,
+  in the caller's dialect, instead of an opaque failure.
+
+### Fixed
+- **Renaming a provider no longer deletes its API keys.** The Edit Provider modal
+  has no `tokens` field, and the handler rebuilt `tokens` from that absent field —
+  writing `tokens = '[]'` and silently wiping every key on a rename.
+- **Gateway keys no longer leak upstream.** The caller's `Authorization` /
+  `x-api-key` / `x-goog-api-key` (a cfrouter `sk-…` key) was copied onto the provider
+  request; inbound auth headers are now stripped before the provider's own are set —
+  which is also what makes `auth_style: 'api-key'` send one header instead of two.
+- Keys missing a required companion field are skipped by the token selector instead
+  of building a request against a literal `{placeholder}` host.
+
 ## [2.0.0] — 2026-10-18
 
 Public open-source release.
