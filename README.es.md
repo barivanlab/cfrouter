@@ -1,12 +1,23 @@
-# CFRouter — Puerta de enlace de IA compatible con OpenAI y balanceador de carga para Cloudflare Workers
+# CFRouter — Puerta de enlace de IA compatible con OpenAI, router LLM y balanceador de carga para Cloudflare Workers
 
-> **Enruta, proxifica y gestiona múltiples proveedores de IA a través de un único endpoint compatible con OpenAI — desplegado en la red edge de Cloudflare en minutos.**
+> **Enruta, proxifica, balancea la carga y gestiona múltiples proveedores de IA a través de un único endpoint compatible con OpenAI — una puerta de enlace LLM autoalojada, desplegada en la red edge de Cloudflare en minutos.**
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/barivanlab/cfrouter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-f48120.svg)](https://workers.cloudflare.com)
+[![Docs](https://img.shields.io/badge/docs-English-blue.svg)](README.md)
+[![Docs FA](https://img.shields.io/badge/docs-فارسی-green.svg)](README.fa.md)
+[![Docs FR](https://img.shields.io/badge/docs-Français-purple.svg)](README.fr.md)
+[![Docs AR](https://img.shields.io/badge/docs-العربية-orange.svg)](README.ar.md)
+[![Docs ES](https://img.shields.io/badge/docs-Español-red.svg)](README.es.md)
+[![Contact](https://img.shields.io/badge/contact-info%40barivan.com-0b7285.svg)](mailto:info@barivan.com)
 
 **Leer en:** [English](README.md) · [فارسی](README.fa.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Español](README.es.md)
+
+> 🌍 **Esta documentación existe en cinco idiomas.** El inglés es la versión canónica y siempre
+> refleja la última versión publicada; las traducciones al español, persa, francés y árabe cubren
+> los mismos capítulos: instalación, referencia de API, conexión de agentes de código,
+> configuración y seguridad. Si una traducción difiere del texto inglés, prevalece el inglés.
 
 ---
 
@@ -15,14 +26,17 @@
 | Sección | Descripción |
 |---------|-------------|
 | [¿Qué es CFRouter?](#qué-es-cfrouter) | Presentación del proyecto |
-| [Inicio rápido (CLI)](#-inicio-rápido) | Para desarrolladores cómodos con la terminal |
-| [Instalación desde el panel de Cloudflare](#️-instalación-desde-el-panel-de-cloudflare-sin-cli) | Despliegue solo con la interfaz web |
+| [Instalación](#-instalación) | Un clic, CLI o panel — elige tu camino |
+| [Inicio rápido (CLI)](#-inicio-rápido) | Opción B — para desarrolladores cómodos con la terminal |
+| [Instalación desde el panel de Cloudflare](#️-instalación-desde-el-panel-de-cloudflare-sin-cli) | Opción C — despliegue solo con la interfaz web |
 | [Características](#-características) | Lista completa |
 | [Referencia API](#-referencia-api) | Documentación de endpoints |
 | [Conectar un agente de código](#-conectar-un-agente-de-código) | Configurar Claude Code, Cline, Continue |
 | [Configuración](#-configuración) | Ajustes avanzados |
 | [Seguridad](#-modelo-de-seguridad) | Autenticación, secretos y buenas prácticas |
 | [Desarrollo](#️-desarrollo) | Guía de desarrollo local |
+| [Preguntas frecuentes](#-preguntas-frecuentes) | ¿Gratis? ¿Comparado con LiteLLM? ¿Claves? ¿Equipos? |
+| [Contacto](#-contacto) | Email, issues, divulgación de seguridad |
 
 ---
 
@@ -31,6 +45,29 @@
 CFRouter es una **puerta de enlace API de IA autoalojada** construida como un único Cloudflare Worker. Actúa como **proxy inverso** y **balanceador de carga** para proveedores de LLM como OpenAI, Anthropic, Google Gemini y cualquier API compatible con OpenAI — dándote un endpoint unificado para todas tus cargas de IA.
 
 Si construyes con **agentes de IA** (VSCode Copilot, Cline, Continue, Cursor), ejecutas **apps potenciadas por LLM** o gestionas **múltiples claves API** entre proveedores, CFRouter te ofrece una capa de enrutamiento limpia, observable y económica sobre la red edge global de Cloudflare.
+
+Piénsalo como un router LLM autoalojado que controlas de principio a fin: ninguna puerta de terceros en el camino de la petición, ningún margen por token y tus claves de proveedor guardadas en tu propia base de datos Cloudflare D1. Es una alternativa de código abierto (MIT) a las pasarelas de IA gestionadas y a ejecutar por tu cuenta LiteLLM, OpenRouter o un proxy tipo Portkey — con failover automático, rotación de claves API, llamadas a herramientas y analítica de uso incluidas. Un solo archivo Worker, un `wrangler deploy`, y todos los modelos a los que tienes acceso responden en una única URL compatible con OpenAI.
+
+### Para qué se usa
+
+- **Agentes de código** — apunta Claude Code, Cline, Continue, Cursor o VS Code Copilot a una sola URL base en lugar de pegar claves de proveedor en cada herramienta.
+- **Balanceo multi-proveedor** — reparte tus chat completions entre OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq o tu propio servidor vLLM, con selección de clave round-robin, least-used o secuencial.
+- **Supervivencia a límites de tasa y caídas** — un `429`, `401` o `5xx` de un proveedor se reintenta de forma transparente en el siguiente habilitado, así tus agentes y apps siguen funcionando.
+- **Puerta de enlace de equipo** — da a cada desarrollador o app su propio token `sk-`, y observa el uso de tokens y el coste por clave y por modelo en el panel.
+- **Despliegue en el edge** — un Worker, una base D1 y nada que parchear; el proxy se ejecuta dentro de la red de Cloudflare, cerca de tus usuarios.
+- **Traducción de dialectos** — llama a Claude a través de la API de OpenAI, o a Gemini a través de la Messages API de Anthropic; la puerta traduce petición y respuesta en ambos sentidos, streaming incluido.
+
+### Una puerta, cero servidores
+
+- **Sin servidor que pagar ni parchear** — todo el router es un Worker más una base D1, y el plan
+  gratuito de Cloudflare suele bastar para un equipo.
+- **Un router para todos tus proyectos** — apunta todas tus apps, scripts y agentes a la misma
+  puerta en vez de repartir claves de proveedor entre proyectos.
+- **Tus claves, gestionadas en el centro** — las claves de proveedor viven en tu D1; reparte
+  tokens `sk-` revocables por app, desarrollador o cliente, con uso seguido por token.
+- **Más cuota con round-robin multi-token** — adjunta varias claves por proveedor y elige la
+  estrategia `round-robin` (o `least-used`); la puerta reparte las peticiones entre ellas, y el
+  límite de tasa deja de ser un techo de clave única.
 
 ### Cómo funciona
 
@@ -85,7 +122,39 @@ streaming en el dialecto que tu cliente espera.
 
 ---
 
+## 💿 Instalación
+
+Elige el camino que te encaje — los tres terminan en la misma puerta:
+
+| Camino | Ideal para | Detalles |
+|---|---|---|
+| **A. Despliegue en un clic** | Lo más rápido: sin terminal ni copiar-pegar | El botón Deploy de abajo |
+| [**B. Inicio rápido con CLI**](#-inicio-rápido) | Desarrolladores que viven en la terminal | Clonar + `wrangler deploy` |
+| [**C. Panel, sin CLI**](#️-instalación-desde-el-panel-de-cloudflare-sin-cli) | Solo clics, con control total | Interfaz web de Cloudflare |
+
+Los tres caminos terminan con los mismos tres pasos: **añadir un proveedor → crear un token de
+puerta → apuntar tus clientes a la puerta**. Cada camino se abre abajo, uno por uno.
+
+### Opción A: despliegue en un clic
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/barivanlab/cfrouter)
+
+1. Pulsa **Deploy to Cloudflare** — crea el Worker y su base D1 en tu propia cuenta de
+   Cloudflare.
+2. Cuando se pida, define `ADMIN_PASSWORD` y `SESSION_SECRET` (o salta ambos y visita `/setup`
+   en la primera apertura — el asistente los guarda por ti).
+3. Desde aquí todos los caminos convergen: continúa en
+   [Paso 8: Acceder al panel de administración](#paso-8-acceder-al-panel-de-administración) —
+   añade un proveedor, pulsa Fetch Models, crea un token bajo **Tokens** y envía tu primera
+   petición.
+
+---
+
 ## 🚀 Inicio rápido
+
+> **Opción B — el camino CLI.** ¿Prefieres un clic o nada de terminal? Usa la
+> [opción A](#-instalación) o la
+> [opción C](#️-instalación-desde-el-panel-de-cloudflare-sin-cli).
 
 ### Requisitos
 
@@ -527,6 +596,20 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
+### Chatbots, automatización y más (n8n, Hermes, …)
+
+Todo lo que hable el protocolo OpenAI funciona igual — sin infraestructura extra:
+
+- **n8n** — en un nodo OpenAI (o HTTP Request), pon la base URL en
+  `https://cfrouter.<your-subdomain>.workers.dev/v1` (o tu
+  [dominio personalizado](#dominio-personalizado-opcional)), la credencial en tu token `sk-` y
+  el modelo en `slug/modelo`.
+- **Chatbots y agentes estilo Hermes** — donde la herramienta pida base URL de OpenAI, API key y
+  modelo, pega los mismos tres valores. Streaming y tool calling se comportan como OpenAI, así
+  tus asistentes siguen funcionando sin cambios.
+- Una sola puerta sirve a la vez a agentes de código, chatbots y automatizaciones — cada uno con
+  su token, todos medidos en el mismo panel.
+
 ### Solución de problemas
 
 | Síntoma | Causa | Solución |
@@ -581,16 +664,34 @@ Anthropic y Gemini por igual.
 
 ### Dominio personalizado (opcional)
 
-Para usar tu dominio en vez de `*.workers.dev`:
+Dale a tu puerta tu propia dirección — y entrega esa dirección a tus clientes. El propio
+enrutamiento de Cloudflare pone tu dominio delante del Worker: los clientes lo usan como base
+URL exactamente igual que la dirección `*.workers.dev` por defecto (el TLS se provisiona
+automáticamente).
 
-1. Agrega un dominio personalizado en el [panel de Cloudflare](https://dash.cloudflare.com)
-2. Actualiza `wrangler.toml`:
+**Vía el panel de Cloudflare (sin archivo de config):**
+
+1. Abre la página de tu Worker → **Settings → Domains & Routes → Add → Custom Domain**
+2. Escribe p. ej. `api.yourdomain.com` (la zona debe estar en Cloudflare)
+3. Usa `https://api.yourdomain.com/v1` como base URL en cada lugar donde usarías la URL
+   `workers.dev`
+
+**Vía `wrangler.toml` (una ruta en una zona tuya):**
 
 ```toml
 routes = [
   { pattern = "api.yourdomain.com/*", zone_name = "yourdomain.com" }
 ]
 ```
+
+Luego `wrangler deploy` — las peticiones a `https://api.yourdomain.com/*` ya llegan a este
+Worker.
+
+**Servir a tus clientes en tu dominio:** crea un token de puerta por cliente bajo **Tokens**
+(empieza con `sk-`) y entrega a cada uno las mismas dos cosas — la URL base de tu dominio y su
+token. El uso queda separado por token en la pestaña de analíticas: un solo Worker en tu dominio
+sirve a todos tus proyectos y clientes, con observabilidad por cliente y sin infraestructura
+extra.
 
 ### Modelo de datos (D1)
 
@@ -677,7 +778,8 @@ Panel admin: `http://localhost:8787/admin` · Salud: `http://localhost:8787/v1/h
 ## 🤝 Contribuir
 
 ¡Contribuciones bienvenidas! Ver [CONTRIBUTING.md](CONTRIBUTING.md).
-Por favor lee el [Código de conducta](CODE_OF_CONDUCT.md) antes de participar.
+Por favor lee el [Código de conducta](CODE_OF_CONDUCT.md) antes de participar — las correcciones de traducción y los nuevos README de idioma valen tanto como el código.
+¿Tienes dudas antes de empezar? Escribe a [info@barivan.com](mailto:info@barivan.com).
 
 ---
 
@@ -699,6 +801,50 @@ Licencia MIT — ver [LICENSE](LICENSE).
 
 ---
 
-## Palabras clave
+## ❓ Preguntas frecuentes
 
-`cloudflare workers` `ai gateway` `openai compatible` `anthropic compatible` `gemini compatible` `api proxy` `load balancer` `llm proxy` `ai router` `cloudflare d1` `ai agent` `vscode copilot` `cline` `claude code` `round robin` `failover` `chat completions` `llm load balancing` `multi provider` `edge computing` `serverless ai` `api management`
+**¿CFRouter es gratis?**
+Sí. CFRouter es código abierto bajo licencia MIT y se ejecuta en tu propia cuenta de Cloudflare: pagas Cloudflare (el plan gratuito suele bastar para un equipo) más las facturas de tus proveedores. Sin margen por petición, sin suscripción y sin ningún servicio de terceros en el camino de tus peticiones.
+
+**¿En qué se diferencia de LiteLLM, OpenRouter o Portkey?**
+CFRouter es un único Cloudflare Worker con su propia base de datos D1: nada que alojar, ningún servicio Python ni contenedor que parchear, ninguna cuenta de proveedor intermedia entre tú y tus APIs. Obtienes un router compatible con OpenAI dentro de tu cuenta de Cloudflare, con rotación de claves round-robin, failover automático, un catálogo de 79 proveedores y un panel de administración para la analítica de uso.
+
+**¿Puedo usarlo con Claude Code, Cline, Continue, Cursor o VS Code Copilot?**
+Ese es el caso de uso principal. Claude Code habla la Messages API nativa de Anthropic en `/v1/messages`; el resto de agentes compatibles con OpenAI se conectan a `/v1` con un token de la puerta. Las llamadas a herramientas (function calling) funcionan en los tres dialectos, con y sin streaming — lo que necesitan los agentes de código para cada edición de archivo y cada comando de shell.
+
+**¿Funciona con proveedores distintos de OpenAI, Anthropic y Gemini?**
+Cualquier endpoint compatible con OpenAI: OpenRouter, Groq, DeepSeek, Together, Fireworks, Cloudflare Workers AI, Azure OpenAI, Snowflake Cortex, Modal o un servidor Ollama / vLLM autoalojado. El panel incluye 79 presets y puedes añadir un proveedor propio con la URL base, el estilo de cabecera y las credenciales acompañantes que necesite.
+
+**¿Dónde viven mis claves API y mi tráfico?**
+En tu cuenta de Cloudflare. Las claves de proveedor están en tu base D1, los tokens de la puerta se guardan como hashes SHA-256 (el token en claro se muestra una sola vez) y las credenciales de admin son secretos cifrados del Worker. Las peticiones van de tu cliente a tu proveedor a través de tu Worker — ningún tráfico ni clave pasa por un servidor que controlemos.
+
+**¿Puedo ejecutarlo para un equipo o varias apps?**
+Sí. Crea un token de puerta por cliente en **Tokens**, elige una estrategia de clave por proveedor (`round-robin`, `random`, `least-used`, `sequential`) y consulta la pestaña de analítica para ver el uso por clave y por modelo — útil para repercutir costes, detectar un agente desbocado y saber qué proveedor sirve realmente tu tráfico.
+
+**¿Qué pasa si un proveedor cae o alcanza su límite de tasa?**
+Las peticiones que nombran un proveedor caído se reintentan de forma transparente en el siguiente habilitado; solo los errores terminales (`400`, `404`, `422`) fallan rápido. Una petición sin proveedor nombrado se difunde en round-robin y se queda con la primera respuesta correcta.
+
+**¿Soporta streaming?**
+Sí — streaming SSE completo en los dialectos OpenAI, Anthropic y Gemini, con traducción de respuestas entre formatos sobre la marcha, incluidas las llamadas a herramientas en streaming.
+
+**¿Puedo usarlo con chatbots, n8n o agentes estilo Hermes?**
+Sí — todo lo que hable el protocolo OpenAI se conecta con los mismos tres valores (base URL,
+token `sk-`, `slug/modelo`). Una sola puerta sirve a la vez a agentes de código, chatbots y
+automatizaciones, cada uno con su token, sin infraestructura de servidores.
+
+**¿Puedo servir mi propio dominio (y a mis clientes) desde él?**
+Sí. Pon tu dominio delante del Worker con el enrutamiento de Cloudflare y entrega a cada cliente
+la URL base de tu dominio más un token de puerta (ver
+[Dominio personalizado](#dominio-personalizado-opcional)). El uso queda separado por token: un
+solo Worker en tu dominio sirve a todos tus proyectos y clientes.
+
+---
+
+## 📬 Contacto
+
+Preguntas, informes de errores, correcciones de traducción, soporte comercial y divulgaciones de seguridad llegan todos a la misma dirección:
+
+- **Email:** [info@barivan.com](mailto:info@barivan.com)
+- **Issues y peticiones de funcionalidad:** [github.com/barivanlab/cfrouter/issues](https://github.com/barivanlab/cfrouter/issues)
+- **Discusiones y dudas de uso:** [github.com/barivanlab/cfrouter/discussions](https://github.com/barivanlab/cfrouter/discussions)
+- **Seguridad:** solo aviso privado — ver [SECURITY.md](SECURITY.md), nunca una issue pública

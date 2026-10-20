@@ -3,11 +3,47 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>CFRouter — One Endpoint for Every AI Provider</title>
-<meta name="description" content="CFRouter is a self-hosted AI gateway on Cloudflare Workers. Route OpenAI, Anthropic and Gemini through one OpenAI-compatible URL with load balancing, failover and usage analytics.">
-<meta property="og:title" content="CFRouter — One Endpoint for Every AI Provider">
-<meta property="og:description" content="Self-hosted AI gateway on Cloudflare's edge. Load-balance, fail over and observe all your LLM traffic through a single URL.">
+<title>CFRouter — Self-Hosted AI Gateway &amp; LLM Router for Cloudflare Workers</title>
+<meta name="description" content="CFRouter is a free, open-source, self-hosted AI gateway and LLM load balancer on Cloudflare Workers. Route OpenAI, Anthropic, Gemini and any OpenAI-compatible API through one endpoint — with round-robin API key rotation, automatic failover, tool calling, streaming and token usage analytics in Cloudflare D1. Works with Claude Code, Cline, Continue, Cursor and VS Code Copilot.">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://barivanlab.github.io/cfrouter/">
+<meta property="og:title" content="CFRouter — Self-Hosted AI Gateway &amp; LLM Router for Cloudflare Workers">
+<meta property="og:description" content="Self-hosted AI gateway on Cloudflare's edge. Load-balance, fail over and observe all your LLM traffic through a single OpenAI-compatible URL — free, open source, MIT licensed.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://barivanlab.github.io/cfrouter/">
+<meta property="og:site_name" content="CFRouter">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="CFRouter — Self-Hosted AI Gateway &amp; LLM Router for Cloudflare Workers">
+<meta name="twitter:description" content="One OpenAI-compatible endpoint for OpenAI, Anthropic, Gemini and 79 provider presets. Load balancing, failover, tool calling and usage analytics on Cloudflare's edge.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "CFRouter",
+  "alternateName": "CFRouter AI Gateway",
+  "applicationCategory": "DeveloperApplication",
+  "applicationSubCategory": "AI gateway, LLM router and API load balancer",
+  "operatingSystem": "Cloudflare Workers",
+  "description": "Self-hosted, OpenAI-compatible AI gateway and LLM load balancer for Cloudflare Workers. Routes OpenAI, Anthropic, Gemini and any OpenAI-compatible provider through one endpoint with round-robin key rotation, automatic failover, tool calling, streaming and token usage analytics in Cloudflare D1.",
+  "url": "https://barivanlab.github.io/cfrouter/",
+  "codeRepository": "https://github.com/barivanlab/cfrouter",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Organization", "name": "Barivan", "email": "info@barivan.com", "url": "https://github.com/barivanlab" },
+  "featureList": [
+    "OpenAI-compatible API gateway and reverse proxy for LLM providers",
+    "Multi-provider load balancing with round-robin, random, least-used and sequential key rotation",
+    "Automatic failover and 429 rate-limit retry across providers",
+    "Native Anthropic Messages API and Gemini API dialects, translated internally",
+    "Tool calling and function calling with streaming on all three dialects",
+    "Per-key, per-model token usage analytics in Cloudflare D1",
+    "79-provider catalog with companion credentials per API key",
+    "Admin dashboard with playground, health monitoring and model curation",
+    "Delivered as a single Cloudflare Worker file, MIT licensed"
+  ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -266,7 +302,7 @@ footer .langs a{margin:0 6px}
   <div class="nav-inner">
     <a class="logo" href="#top"><span class="logo-mark">◈</span> CFRouter</a>
     <div class="links">
-      <a href="#features">Features</a><a href="#how">How it works</a><a href="#install">Install</a><a href="#usage">Usage</a><a href="#rename">Rename</a><a href="#faq">FAQ</a>
+      <a href="#features">Features</a><a href="#how">How it works</a><a href="#install">Install</a><a href="#usage">Usage</a><a href="#rename">Rename</a><a href="#faq">FAQ</a><a href="#languages">Languages</a>
     </div>
     <div class="nav-cta">
       <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Switch to light mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
@@ -277,7 +313,7 @@ footer .langs a{margin:0 6px}
     <button class="burger" onclick="document.getElementById('m').classList.toggle('open')" aria-label="Menu">☰</button>
   </div>
   <div class="mobile-menu" id="m">
-    <a href="#features">✨ Features</a><a href="#how">🔀 How it works</a><a href="#install">🚀 Install</a><a href="#usage">🤖 Usage</a><a href="#rename">✏️ Rename</a><a href="#faq">❓ FAQ</a>
+    <a href="#features">✨ Features</a><a href="#how">🔀 How it works</a><a href="#install">🚀 Install</a><a href="#usage">🤖 Usage</a><a href="#rename">✏️ Rename</a><a href="#faq">❓ FAQ</a><a href="#languages">🌍 Languages</a>
   </div>
 </nav>
 <div class="wrap" id="top">
@@ -285,7 +321,7 @@ footer .langs a{margin:0 6px}
   <section class="hero">
     <div class="badge"><span class="n">v2.0</span> OpenAI · Anthropic · Gemini in one endpoint</div>
     <h1>One endpoint for<br><span class="grad">every AI provider.</span></h1>
-    <p>CFRouter is a self-hosted AI gateway on Cloudflare's edge. Load-balance, fail over and observe all your LLM traffic through a single OpenAI-compatible URL.</p>
+    <p>CFRouter is a free, self-hosted AI gateway on Cloudflare's edge — an OpenAI-compatible LLM router, reverse proxy and load balancer covering OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek and 74 more presets in the catalog. Rotate API keys, survive provider outages and observe every token through a single URL you own.</p>
     <div class="hero-btns">
       <a class="btn btn-pri" href="#install">Start routing in 2 min →</a>
       <a class="btn btn-ghost" href="https://github.com/barivanlab/cfrouter" target="_blank" rel="noopener">View on GitHub</a>
@@ -358,6 +394,9 @@ Model ID : <span class="s">slug/model</span>  <span class="c"># e.g. openai/gpt-
     <div class="feat-c reveal"><div class="ic">🌐</div><h3>Three dialects, one URL</h3><p>Native Anthropic Messages at <span style="font-family:var(--mono)">/v1/messages</span>, native Gemini at <span style="font-family:var(--mono)">/v1beta/…</span>, plus OpenAI — translated internally.</p><span class="tagline">dialect-preserving errors</span></div>
     <div class="feat-c reveal"><div class="ic">🛡️</div><h3>Safe automatic failover</h3><p>Credential, quota and outage errors retry against the next target. Terminal errors (400 / 404 / 422) fail fast.</p><span class="tagline">120s timeout per target</span></div>
     <div class="feat-c reveal"><div class="ic">🎛️</div><h3>Model curation</h3><p>Hide models from the public <span style="font-family:var(--mono)">/models</span> list per model or in bulk — hidden models stay callable, so nothing breaks.</p><span class="tagline">79-provider catalog</span></div>
+    <div class="feat-c reveal"><div class="ic">💸</div><h3>Zero servers, free-tier friendly</h3><p>One Worker plus one D1 database — no server to pay for or patch. One gateway serves every project, with centrally managed keys and multi-token round-robin for more quota.</p><span class="tagline">MIT · self-hosted</span></div>
+    <div class="feat-c reveal"><div class="ic">🤖</div><h3>Agent &amp; automation ready</h3><p>Coding agents, chatbots, Hermes-style assistants and n8n flows all speak the same OpenAI protocol — streaming and tool calling included, no extra infrastructure.</p><span class="tagline">Claude Code · Cline · n8n</span></div>
+    <div class="feat-c reveal"><div class="ic">🌍</div><h3>Your domain, your customers</h3><p>Put your own domain in front of the Worker with Cloudflare routing and hand it to customers — one token per client, usage separated per token.</p><span class="tagline">custom domain + per-client tokens</span></div>
   </section>
 
   <div class="sec-h reveal" id="how">
@@ -379,14 +418,31 @@ Model ID : <span class="s">slug/model</span>  <span class="c"># e.g. openai/gpt-
   <div class="sec-h reveal" id="install">
     <div><span class="kicker">Docs · Install</span>
     <h2>Deploy your own gateway.</h2>
-    <p>Two paths, same result. Use the terminal if you live in it — or deploy entirely with clicks in the Cloudflare dashboard. No CLI required.</p></div>
+    <p>Three paths, same result — pick one, then follow its steps below. Every path ends the same way: <b>add a provider → create a gateway token → point your clients at the gateway</b>.</p></div>
   </div>
+  <section class="reveal" style="margin-bottom:16px">
+    <div class="tbl-wrap"><table>
+      <tr><th>Path</th><th>Best for</th><th>Start</th></tr>
+      <tr><td><b>A. One-click Deploy</b></td><td>Fastest — no terminal, no copy-paste</td><td><a class="btn btn-pri btn-sm" href="https://deploy.workers.cloudflare.com/?url=https://github.com/barivanlab/cfrouter" target="_blank" rel="noopener">Deploy to Cloudflare →</a></td></tr>
+      <tr><td><b>B. CLI Quick Start</b></td><td>Developers who live in the terminal</td><td>Clone + <code>wrangler deploy</code> (tab below)</td></tr>
+      <tr><td><b>C. Dashboard, no CLI</b></td><td>Click-only, full control</td><td>Cloudflare web UI (tab below)</td></tr>
+    </table></div>
+  </section>
   <div class="install-toggle seg">
-    <button class="on" onclick="installTab(event,'cli')">💻 CLI — 5 steps</button>
-    <button onclick="installTab(event,'dash')">🖥️ Dashboard — no CLI</button>
+    <button class="on" onclick="installTab(event,'one')">⚡ A. One-click</button>
+    <button onclick="installTab(event,'cli')">💻 B. CLI — 5 steps</button>
+    <button onclick="installTab(event,'dash')">🖥️ C. Dashboard — no CLI</button>
   </div>
 
-  <section class="install-panel show" id="panel-cli">
+  <section class="install-panel show" id="panel-one">
+    <div class="steps">
+      <div class="step reveal"><div class="step-n">1</div><div><h3>Deploy to your Cloudflare account</h3><p>One click creates the Worker and its D1 database inside <b>your own</b> account — keys and traffic never touch our servers.</p><div style="margin-top:4px"><a class="btn btn-pri" href="https://deploy.workers.cloudflare.com/?url=https://github.com/barivanlab/cfrouter" target="_blank" rel="noopener">Deploy to Cloudflare →</a></div></div></div>
+      <div class="step alt reveal"><div class="step-n">2</div><div><h3>Set two secrets</h3><p>When prompted, set <span class="inline">ADMIN_PASSWORD</span> (min. 6 chars) and <span class="inline">SESSION_SECRET</span> (min. 16 chars). Or skip both and visit <span class="inline">/setup</span> on first run — the wizard stores them in the browser.</p></div></div>
+      <div class="step reveal"><div class="step-n">3</div><div><h3>Add provider + token</h3><p>Open <span class="inline">/admin</span>, log in, click <b>+ Add Provider</b> (or pick a preset), enter base URL + keys, hit <b>Fetch Models</b>. Then under <b>Tokens</b> create a client token — it starts with <span class="inline">sk-</span> and is shown once.</p><div class="ok">✅ Test it: open <span style="font-family:var(--mono)">/v1/health</span> in the browser, then send your first chat completion from the <a href="#usage" style="color:var(--green)">Usage</a> section.</div></div></div>
+    </div>
+  </section>
+
+  <section class="install-panel" id="panel-cli">
     <div class="steps">
       <div class="step reveal"><div class="step-n">1</div><div><h3>Clone &amp; install</h3><p>Node.js 18+ and a free Cloudflare account is all you need.</p><div class="code-head"><div class="dots"><i></i><i></i><i></i></div><button class="copy" onclick="copyBlock(this)">Copy</button></div><pre><span class="f">git clone</span> https://github.com/barivanlab/cfrouter.git
 <span class="f">cd</span> cfrouter &amp;&amp; <span class="f">npm install</span></pre></div></div>
@@ -438,6 +494,10 @@ wrangler secret put SESSION_SECRET  <span class="c"># openssl rand -hex 32</span
   <span class="s">"apiBase"</span>: <span class="s">"https://cfrouter.workers.dev/v1"</span>,
   <span class="s">"apiKey"</span>: <span class="s">"sk-your-gateway-token"</span> }</pre>
     </div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>🔗 Chatbots, automation &amp; more</h2>
+      <p>Anything that speaks the OpenAI protocol — n8n nodes, chatbots and Hermes-style agents — takes the same three values: base URL, <span style="font-family:var(--mono)">sk-</span> token, <span style="font-family:var(--mono)">slug/model</span>. One gateway serves coding agents, chatbots and automations at once, each on its own token.</p>
+    </div>
     <div class="tbl-wrap reveal">
       <table>
         <tr><th>Header</th><th>Used by</th><th>Notes</th></tr>
@@ -465,6 +525,7 @@ routes = [
     zone_name = <span class="s">"yourdomain.com"</span> }
 ]</pre></div>
     </div>
+    <p style="margin-top:14px;color:var(--ink-2);font-size:13.5px;line-height:1.7"><b style="color:var(--ink)">Serving customers?</b> Cloudflare routing puts your domain in front of the Worker — via <b>Settings → Domains &amp; Routes → Custom Domain</b> in the dashboard (no config file) or the route above — and clients use <span class="inline">https://api.yourdomain.com/v1</span> as the base URL. Create one gateway token per customer under <b>Tokens</b>, hand each customer your domain URL plus their token, and usage stays separated per token in analytics: one Worker, every project and customer, no extra infrastructure.</p>
   </section>
 
   <div class="sec-h reveal" id="reference">
@@ -497,7 +558,7 @@ routes = [
   <div class="sec-h reveal" id="faq">
     <div><span class="kicker">Docs · FAQ</span>
     <h2>Troubleshooting, fast.</h2>
-    <p>The five errors everyone hits once — and the one-line fix for each.</p></div>
+    <p>The errors everyone hits once, plus the questions that come up before the first deploy — each with a straight answer.</p></div>
   </div>
   <section class="faq reveal">
     <details open><summary>401 Invalid API key</summary><div class="a">You sent a <b>provider</b> key instead of a <b>gateway</b> token. Create one under <b>Tokens</b> in the dashboard — it starts with <code>sk-</code>.</div></details>
@@ -506,7 +567,48 @@ routes = [
     <details><summary>Agent hangs with no output</summary><div class="a">Streaming can't complete — the provider Base URL or key is wrong. Test the provider directly in the <b>Playground</b> tab first.</div></details>
     <details><summary>Empty model dropdown in Cline</summary><div class="a">The provider's <code>/models</code> is unreachable from the Worker. Models fall back to the cached <b>Fetch Models</b> list — re-run it.</div></details>
     <details><summary>I lost my admin password / token</summary><div class="a">Reset secrets with <code>wrangler secret put</code> (or re-deploy). Tokens are SHA-256 hashed and shown once — create a fresh one per client so analytics stay meaningful.</div></details>
+    <details><summary>Is CFRouter free, and how does it compare to LiteLLM or OpenRouter?</summary><div class="a">CFRouter is open source under the MIT license and runs inside your own Cloudflare account — you pay Cloudflare plus your own provider bills, with no per-request markup and no third party in the request path. Unlike LiteLLM or a hosted gateway, there is nothing to host or patch: it is one Cloudflare Worker with its own D1 database, and it ships with key rotation, failover, a 79-provider catalog and an admin dashboard.</div></details>
+    <details><summary>Where do my provider API keys live?</summary><div class="a">In your Cloudflare account. Provider keys sit in your D1 database, gateway tokens are stored as SHA-256 hashes (the raw token is shown once), and admin credentials are encrypted Worker secrets. Requests travel from your client to your provider through your Worker — no traffic or key passes through a server we control.</div></details>
+    <details><summary>Can I run one gateway for a whole team?</summary><div class="a">Yes. Create a gateway token per developer or app under <b>Tokens</b>, set a key strategy per provider, and read per-key, per-model token usage in the analytics tab — useful for chargeback, for catching a runaway agent and for seeing which provider actually serves your traffic.</div></details>
+    <details><summary>Can I use it with chatbots, n8n or Hermes-style agents?</summary><div class="a">Yes — anything that speaks the OpenAI protocol plugs in with the same three values (base URL, <code>sk-</code> token, <code>slug/model</code>). One gateway serves coding agents, chatbots and automations at once, each on its own token, with no server infrastructure.</div></details>
+    <details><summary>Can I serve my own domain (and my customers) from it?</summary><div class="a">Yes. Put your domain in front of the Worker with Cloudflare routing (dashboard custom domain or a <code>wrangler.toml</code> route), hand each customer your domain base URL plus one gateway token, and usage stays separated per token in analytics — one Worker, every project and customer.</div></details>
   </section>
+
+  <div class="sec-h reveal" id="languages">
+    <div><span class="kicker">Docs · Translations</span>
+    <h2>Read the docs in your language.</h2>
+    <p>The README ships in five languages — same chapters, same commands: features, CLI and dashboard installation, API reference, coding-agent setup, key strategies, security and architecture. English is canonical and always matches the latest release.</p></div>
+  </div>
+  <section class="reveal">
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Language</th><th>Document</th><th>Coverage</th></tr>
+        <tr><td><b>English</b></td><td><a href="https://github.com/barivanlab/cfrouter/blob/main/README.md" style="color:var(--blue);text-decoration:none">README.md</a></td><td>Canonical source — updated with every release</td></tr>
+        <tr><td><b>Persian</b> · فارسی</td><td><a href="https://github.com/barivanlab/cfrouter/blob/main/README.fa.md" style="color:var(--blue);text-decoration:none">README.fa.md</a></td><td>Full translation, including the dashboard walkthrough</td></tr>
+        <tr><td><b>French</b> · Français</td><td><a href="https://github.com/barivanlab/cfrouter/blob/main/README.fr.md" style="color:var(--blue);text-decoration:none">README.fr.md</a></td><td>Full translation</td></tr>
+        <tr><td><b>Arabic</b> · العربية</td><td><a href="https://github.com/barivanlab/cfrouter/blob/main/README.ar.md" style="color:var(--blue);text-decoration:none">README.ar.md</a></td><td>Full translation</td></tr>
+        <tr><td><b>Spanish</b> · Español</td><td><a href="https://github.com/barivanlab/cfrouter/blob/main/README.es.md" style="color:var(--blue);text-decoration:none">README.es.md</a></td><td>Full translation</td></tr>
+      </table>
+    </div>
+    <p style="margin-top:12px;color:var(--ink-2);font-size:13.5px">Spotted a mistake in a translation, or want to add a language? Open a PR on <a href="https://github.com/barivanlab/cfrouter" style="color:var(--blue);text-decoration:none">GitHub</a> or write to <a href="mailto:info@barivan.com" style="color:var(--blue);text-decoration:none">info@barivan.com</a>.</p>
+  </section>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "401 Invalid API key", "acceptedAnswer": { "@type": "Answer", "text": "You sent a provider key instead of a gateway token. Create one under Tokens in the dashboard — it starts with sk-." } },
+      { "@type": "Question", "name": "404 Unknown provider slug", "acceptedAnswer": { "@type": "Answer", "text": "The slug before the slash matches no provider. The error lists the valid slugs — check the Providers tab, for example openai/gpt-4o rather than gpt-4o alone." } },
+      { "@type": "Question", "name": "503 No providers available", "acceptedAnswer": { "@type": "Answer", "text": "No enabled provider or no enabled key. Enable one in the Providers tab and re-run Fetch Models." } },
+      { "@type": "Question", "name": "Is CFRouter free, and how does it compare to LiteLLM or OpenRouter?", "acceptedAnswer": { "@type": "Answer", "text": "CFRouter is open source under the MIT license and runs inside your own Cloudflare account — you pay Cloudflare plus your own provider bills, with no per-request markup. It is a single Cloudflare Worker with its own D1 database, so there is nothing to host or patch, and it ships with key rotation, failover, a 79-provider catalog and an admin dashboard." } },
+      { "@type": "Question", "name": "Where do my provider API keys live?", "acceptedAnswer": { "@type": "Answer", "text": "In your Cloudflare account: provider keys in your D1 database, gateway tokens as SHA-256 hashes, and admin credentials as encrypted Worker secrets. No traffic or key passes through a server we control." } },
+      { "@type": "Question", "name": "Can I run one gateway for a whole team?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Create a gateway token per developer or app under Tokens, set a key strategy per provider, and read per-key, per-model token usage in the analytics tab." } },
+      { "@type": "Question", "name": "Can I use it with chatbots, n8n or Hermes-style agents?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — anything that speaks the OpenAI protocol plugs in with the same base URL, sk- token and slug/model. One gateway serves coding agents, chatbots and automations at once." } },
+      { "@type": "Question", "name": "Can I serve my own domain (and my customers) from it?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Put your domain in front of the Worker with Cloudflare routing, hand each customer your domain base URL plus one gateway token, and usage stays separated per token." } }
+    ]
+  }
+  </script>
 
   <section class="cta reveal">
     <h2>Ship your gateway <span class="grad">tonight.</span></h2>
@@ -520,8 +622,9 @@ routes = [
 </div>
 <footer>
   CFRouter Gateway · Powered by Cloudflare Workers · MIT License<br>
-  <span class="langs"><a href="https://github.com/barivanlab/cfrouter">English</a> · <a href="https://github.com/barivanlab/cfrouter/blob/main/README.fa.md">فارسی</a> · <a href="https://github.com/barivanlab/cfrouter/blob/main/README.fr.md">Français</a> · <a href="https://github.com/barivanlab/cfrouter/blob/main/README.ar.md">العربية</a> · <a href="https://github.com/barivanlab/cfrouter/blob/main/README.es.md">Español</a></span><br>
-  <span id="yr"></span> · <a href="#install">Docs</a> · <a href="#usage">API</a> · <a href="#rename">Rename</a>
+  <span class="langs"><a href="https://github.com/barivanlab/cfrouter">English</a> · <a href="https://github.com/barivanlab/cfrouter/blob/main/README.fa.md">فارسی</a> · <a href="https://github.com/barivanlab/cfrouter/blob/main/README.fr.md">Français</a> · <a href="https://github.com/barivanlab/cfrouter/blob/main/README.ar.md">العربية</a> · <a href="https://github.com/barivanlab/cfrouter/blob/main/README.es.md">Español</a> — see <a href="#languages">all translations</a></span><br>
+  <span id="yr"></span> · <a href="#install">Docs</a> · <a href="#usage">API</a> · <a href="#rename">Rename</a> · <a href="#languages">Translations</a><br>
+  Contact: <a href="mailto:info@barivan.com">info@barivan.com</a> · <a href="https://github.com/barivanlab/cfrouter/issues">Issues</a> · <a href="https://github.com/barivanlab/cfrouter/discussions">Discussions</a>
 </footer>
 </div>
 <script>
@@ -531,7 +634,7 @@ function applyTheme(m){var h=document.documentElement;var b=document.getElementB
 function toggleTheme(){applyTheme(document.documentElement.classList.contains('light')?'dark':'light')}
 (function(){var s='dark';try{s=localStorage.getItem('cfrouter-theme')||'dark'}catch(e){}applyTheme(s)})();
 function tab(e,id){var btns=e.target.parentElement.querySelectorAll('.tab');btns.forEach(function(b){b.classList.remove('active')});e.target.classList.add('active');var card=e.target.closest('.card');card.querySelectorAll('pre[id]').forEach(function(p){p.style.display=(p.id===id)?'block':'none'})}
-function installTab(e,id){document.querySelectorAll('.install-toggle button').forEach(function(b){b.classList.remove('on')});e.target.classList.add('on');document.getElementById('panel-cli').classList.toggle('show',id==='cli');document.getElementById('panel-dash').classList.toggle('show',id==='dash')}
+function installTab(e,id){document.querySelectorAll('.install-toggle button').forEach(function(b){b.classList.remove('on')});e.target.classList.add('on');document.getElementById('panel-one').classList.toggle('show',id==='one');document.getElementById('panel-cli').classList.toggle('show',id==='cli');document.getElementById('panel-dash').classList.toggle('show',id==='dash')}
 function copyText(t,btn){navigator.clipboard.writeText(t).then(function(){var o=btn.textContent;btn.textContent='Copied ✓';setTimeout(function(){btn.textContent=o},1400)})}
 function copyBlock(btn){var pre=btn.parentElement.nextElementSibling;if(pre&&pre.tagName==='PRE'){copyText(pre.innerText,btn)}}
 document.getElementById('yr').textContent='© '+new Date().getFullYear()+' CFRouter';

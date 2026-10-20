@@ -7,6 +7,25 @@ All notable changes to CFRouter are documented here. The format follows
 
 Per-key companion credentials.
 
+### Documentation
+
+- Contact address (`info@barivan.com`) added to all five READMEs, `SECURITY.md`, `CONTRIBUTING.md`
+  and the docs site footer.
+- New "Documentation in Other Languages" section introduces the five translated READMEs; the
+  translated files gained matching language badges and a canonical-English note.
+- SEO terms are now written into the prose of every README (intro, use cases, FAQ) instead of a
+  keyword list at the end; each README gained an FAQ section and a Contact section.
+- New `## Translations` section in `CONTRIBUTING.md` covering translation fixes and new languages.
+- Install docs now open with a three-path overview (one-click Deploy button, CLI quick start,
+  dashboard without CLI) across all five READMEs and the docs site, each path expanding to its
+  own steps; the one-click panel is new on the docs site.
+- Custom-domain docs rewritten as customer-serving docs: Cloudflare routing (dashboard custom
+  domain or `wrangler.toml` route), then one gateway token per customer, per-token analytics.
+- New "one gateway, zero servers" benefits (no server bills, one router for all projects,
+  centralized key management, multi-token round-robin for more quota) and agent/automation
+  coverage (coding agents, chatbots, Hermes-style assistants, n8n) plus matching FAQ entries in
+  every README and on the docs site.
+
 ### Added
 - **Companion credentials per key.** Providers that need a second value alongside
   the API key — Cloudflare Workers AI `account_id`, Azure OpenAI resource, Snowflake

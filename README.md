@@ -1,6 +1,6 @@
-# CFRouter — OpenAI-Compatible AI Gateway & Load Balancer for Cloudflare Workers
+# CFRouter — OpenAI-Compatible AI Gateway, LLM Router & Load Balancer for Cloudflare Workers
 
-> **Route, proxy, and manage multiple AI providers through a single OpenAI-compatible endpoint — deployed on Cloudflare's edge network in minutes.**
+> **Route, proxy, load-balance and manage multiple AI providers through a single OpenAI-compatible endpoint — a self-hosted LLM gateway deployed on Cloudflare's edge network in minutes.**
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/barivanlab/cfrouter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -10,8 +10,15 @@
 [![Docs FR](https://img.shields.io/badge/docs-Français-purple.svg)](README.fr.md)
 [![Docs AR](https://img.shields.io/badge/docs-العربية-orange.svg)](README.ar.md)
 [![Docs ES](https://img.shields.io/badge/docs-Español-red.svg)](README.es.md)
+[![Contact](https://img.shields.io/badge/contact-info%40barivan.com-0b7285.svg)](mailto:info@barivan.com)
 
 **Read this in:** [English](README.md) · [فارسی](README.fa.md) · [Français](README.fr.md) · [العربية](README.ar.md) · [Español](README.es.md)
+
+> 🌍 **This documentation exists in five languages.** English is the canonical version and always
+> reflects the latest release; the other four are complete translations of the same install, API,
+> agent, configuration and security chapters. See
+> [Documentation in other languages](#-documentation-in-other-languages) — and if a translation
+> drifts from the English text, the English text wins.
 
 ---
 
@@ -19,15 +26,41 @@
 
 | Section | Description |
 |---------|-------------|
-| [What is CFRouter?](#what-is-cfrouter) | Overview of the project |
-| [Quick Start (CLI)](#-quick-start) | For developers comfortable with the terminal |
-| [Install via Cloudflare Dashboard](#️-install-via-cloudflare-dashboard-no-cli-required) | Deploy using only the web interface |
+| [Documentation in other languages](#-documentation-in-other-languages) | This README in 5 languages |
+| [What is CFRouter?](#what-is-cfrouter) | Overview, use cases, and how it works |
+| [Installation](#-installation) | One-click, CLI or dashboard — pick your path |
+| [Quick Start (CLI)](#-quick-start) | Option B — for developers comfortable with the terminal |
+| [Install via Cloudflare Dashboard](#️-install-via-cloudflare-dashboard-no-cli-required) | Option C — deploy using only the web interface |
 | [Features](#-features) | Full feature list |
 | [API Reference](#-api-reference) | Endpoint documentation |
 | [Connect a Coding Agent](#-connect-a-coding-agent) | Claude Code, Cline, Continue setup |
 | [Configuration](#-configuration) | Advanced settings |
 | [Security](#-security-model) | Auth, secrets, and best practices |
 | [Development](#️-development) | Local development guide |
+| [FAQ](#-faq) | Free? LiteLLM comparison? Keys? Teams? |
+| [Contact](#-contact) | Email, issues, security disclosures |
+
+---
+
+## 🌍 Documentation in Other Languages
+
+CFRouter's documentation ships in five languages, so you can read the install walkthrough, the API
+reference, the agent setup and the security model in the language you think in:
+
+| Language | README | Notes |
+|---|---|---|
+| **English** | [README.md](README.md) | Canonical source — updated with every release |
+| **Persian** · فارسی | [README.fa.md](README.fa.md) | Full translation, including the dashboard walkthrough |
+| **French** · Français | [README.fr.md](README.fr.md) | Full translation |
+| **Arabic** · العربية | [README.ar.md](README.ar.md) | Full translation |
+| **Spanish** · Español | [README.es.md](README.es.md) | Full translation |
+
+Every translation covers the same chapters: features, CLI and dashboard installation, API reference,
+coding-agent setup, key strategies, security and architecture. The English README is the source of
+truth when wording differs.
+
+Spotted a mistake in a translation, or want to add another language? Open a PR — see
+[CONTRIBUTING.md](CONTRIBUTING.md) — or write to [info@barivan.com](mailto:info@barivan.com).
 
 ---
 
@@ -36,6 +69,34 @@
 CFRouter is a **self-hosted AI API gateway** built as a single Cloudflare Worker. It acts as a **reverse proxy** and **load balancer** for LLM providers like OpenAI, Anthropic, Google Gemini, and any OpenAI-compatible API — giving you one unified endpoint for all your AI workloads.
 
 If you're building with **AI agents** (VSCode Copilot, Cline, Continue, Cursor), running **LLM-powered apps**, or managing **multiple API keys** across providers, CFRouter gives you a clean, observable, and cost-effective routing layer on Cloudflare's global edge network.
+
+Think of it as a self-hosted LLM router you own end to end: no third-party gateway in the request
+path, no per-token markup, and your provider keys stay in your own Cloudflare D1 database. It is an
+open-source (MIT) alternative to hosted AI gateways and to running LiteLLM, OpenRouter or
+Portkey-style proxies yourself — with automatic failover, API key rotation, tool calling and
+usage analytics built in. One Worker file, one `wrangler deploy`, and every model you have access to
+answers on a single OpenAI-compatible URL.
+
+### What people use it for
+
+- **AI coding agents** — point Claude Code, Cline, Continue, Cursor or VS Code Copilot at one base URL instead of pasting provider keys into every tool.
+- **Multi-provider load balancing** — spread chat completions across OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq or your own vLLM box, with round-robin, least-used or sequential key selection.
+- **Rate-limit and outage survival** — a `429`, `401` or `5xx` from one provider transparently retries against the next enabled one, so agents and apps keep working.
+- **Team gateways** — give every developer or app its own `sk-` gateway token, then watch per-key, per-model token usage and cost in the dashboard.
+- **Edge deployment** — one Worker, one D1 database, nothing to patch; the proxy runs inside Cloudflare's network, close to your users.
+- **Dialect translation** — call Claude over the OpenAI API, or Gemini over the Anthropic Messages API; the gateway translates request and response in both directions, streaming included.
+
+### One gateway, zero servers
+
+- **No server to pay for or patch** — the whole router is one Worker plus one D1 database, and
+  the Cloudflare free tier is usually enough for a team.
+- **One router for every project** — point all your apps, scripts and agents at the same gateway
+  instead of spreading provider keys across projects.
+- **Your keys, managed centrally** — provider keys live in your D1; hand out revocable `sk-`
+  gateway tokens per app, developer or customer, and watch usage per token.
+- **More quota via multi-token round-robin** — attach several tokens per provider and pick the
+  `round-robin` (or `least-used`) strategy; the gateway spreads requests across them, so rate
+  limits stop being a single-key ceiling.
 
 ### How it works
 
@@ -91,7 +152,38 @@ dialect your client expects.
 
 ---
 
+## 💿 Installation
+
+Pick whichever path fits you — all three end with the same gateway:
+
+| Path | Best for | Details |
+|---|---|---|
+| [**A. One-click Deploy**](#option-a-one-click-deploy) | Fastest: no terminal, no copy-paste | The Deploy button below |
+| [**B. CLI Quick Start**](#-quick-start) | Developers who live in the terminal | Clone + `wrangler deploy` |
+| [**C. Dashboard, no CLI**](#️-install-via-cloudflare-dashboard-no-cli-required) | Click-only, full control | Cloudflare web UI |
+
+Every path finishes with the same three steps: **add a provider → create a gateway token →
+point your clients at the gateway**. Each path is opened up one by one below.
+
+### Option A: One-click Deploy
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/barivanlab/cfrouter)
+
+1. Click **Deploy to Cloudflare** — it creates the Worker and its D1 database in your own
+   Cloudflare account.
+2. When prompted, set `ADMIN_PASSWORD` and `SESSION_SECRET` (or skip both and visit `/setup`
+   on first run — the wizard stores them for you).
+3. From here every path converges: continue at
+   [Step 8: Access the Admin Panel](#step-8-access-the-admin-panel) — add a provider, fetch
+   models, create a token under **Tokens**, and send your first request.
+
+---
+
 ## 🚀 Quick Start
+
+> **Option B — the CLI path.** Prefer one click or no terminal? Use
+> [Option A](#option-a-one-click-deploy) or
+> [Option C](#️-install-via-cloudflare-dashboard-no-cli-required) instead.
 
 ### Prerequisites
 
@@ -539,6 +631,20 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
+### Chatbots, automation & more (n8n, Hermes, …)
+
+Anything that speaks the OpenAI protocol works the same way — no extra infrastructure:
+
+- **n8n** — in an OpenAI node (or an HTTP Request node), set the base URL to
+  `https://cfrouter.<your-subdomain>.workers.dev/v1` (or your
+  [custom domain](#custom-domain-optional)), the credential to your `sk-` gateway token, and
+  the model to `slug/model`.
+- **Chatbots & Hermes-style agents** — wherever the tool asks for an OpenAI base URL, API key
+  and model, paste the same three values. Streaming and tool calling behave like OpenAI, so
+  assistants keep working unchanged.
+- One gateway serves coding agents, chatbots and automations at once — each with its own token,
+  all metered in the same dashboard.
+
 ### Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -653,16 +759,30 @@ that provider answers `400` saying which field is missing.
 
 ### Custom Domain (Optional)
 
-To use your own domain instead of `*.workers.dev`:
+Give your gateway your own address — and hand that address to your customers. Cloudflare's own
+routing puts your domain in front of the Worker, so clients use it as the base URL exactly like
+the default `*.workers.dev` one (TLS is provisioned automatically).
 
-1. Add a custom domain in the [Cloudflare dashboard](https://dash.cloudflare.com)
-2. Update `wrangler.toml`:
+**Via the Cloudflare dashboard (no config file):**
+
+1. Open your Worker's page → **Settings → Domains & Routes → Add → Custom Domain**
+2. Enter e.g. `api.yourdomain.com` (the zone must be on Cloudflare)
+3. Use `https://api.yourdomain.com/v1` as the base URL everywhere you'd use the `workers.dev` URL
+
+**Via `wrangler.toml` (a route on a zone you own):**
 
 ```toml
 routes = [
   { pattern = "api.yourdomain.com/*", zone_name = "yourdomain.com" }
 ]
 ```
+
+Then `wrangler deploy` — requests to `https://api.yourdomain.com/*` now hit this Worker.
+
+**Serving customers on your domain:** create one gateway token per customer under **Tokens**
+(starts with `sk-`), and give each customer the same two things — your domain base URL and their
+token. Usage stays separated per token in the analytics tab, so one Worker on your domain serves
+all your projects and customers with per-client observability and no extra infrastructure.
 
 ### Data model (D1)
 
@@ -750,7 +870,9 @@ Admin panel: `http://localhost:8787/admin` · Health: `http://localhost:8787/v1/
 ## 🤝 Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-Please read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+Please read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating — translation fixes and
+new language READMEs are just as valuable as code. Questions before you start?
+Write to [info@barivan.com](mailto:info@barivan.com).
 
 ---
 
@@ -772,6 +894,71 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-## Keywords
+## ❓ FAQ
 
-`cloudflare workers` `ai gateway` `openai compatible` `anthropic compatible` `gemini compatible` `api proxy` `load balancer` `llm proxy` `ai router` `cloudflare d1` `ai agent` `vscode copilot` `cline` `claude code` `round robin` `failover` `chat completions` `llm load balancing` `multi provider` `edge computing` `serverless ai` `api management`
+**Is CFRouter free?**
+Yes. CFRouter is open source under the MIT license and runs in your own Cloudflare account: you pay
+Cloudflare (the free tier is usually enough for a team) plus your own provider bills. There is no
+per-request markup, no subscription, and no third-party service sitting in your request path.
+
+**How is it different from LiteLLM, OpenRouter or Portkey?**
+CFRouter is a single Cloudflare Worker backed by its own D1 database — nothing to host, no Python
+service or container to keep patched, no vendor account between you and your providers. You get an
+OpenAI-compatible router inside your own Cloudflare account, with round-robin API key rotation,
+automatic failover, a 79-provider catalog and a built-in admin dashboard for usage analytics.
+
+**Can I use it with Claude Code, Cline, Continue, Cursor or VS Code Copilot?**
+That is the main use case. Claude Code speaks the native Anthropic Messages API at `/v1/messages`;
+every other OpenAI-compatible agent points at `/v1` with a gateway token. Tool calling (function
+calling) works on all three dialects, streaming and non-streaming, which is what coding agents need
+for every file edit and shell command.
+
+**Does it work with providers other than OpenAI, Anthropic and Gemini?**
+Any OpenAI-compatible endpoint works: OpenRouter, Groq, DeepSeek, Together, Fireworks, Cloudflare
+Workers AI, Azure OpenAI, Snowflake Cortex, Modal, or a self-hosted Ollama / vLLM server. The
+dashboard ships 79 provider presets, and you can add a custom provider with any base URL, header
+style and companion credential your provider needs.
+
+**Where do my API keys and traffic live?**
+In your Cloudflare account. Provider keys sit in your D1 database, gateway tokens are stored as
+SHA-256 hashes (the raw token is shown once), and admin credentials are encrypted Worker secrets.
+Requests go from your client straight to your provider through your Worker — no traffic or key
+passes through any server we control.
+
+**Can I run it for a team, or for several apps?**
+Yes. Create one gateway token per client under **Tokens**, pick a key strategy per provider
+(`round-robin`, `random`, `least-used`, `sequential`), and use the analytics tab to see per-key,
+per-model token usage — handy for chargeback, for spotting a runaway agent, and for knowing which
+provider is actually serving your traffic.
+
+**What happens when a provider goes down or hits a rate limit?**
+Requests naming a dead provider are retried transparently against the next enabled one; only terminal
+errors (`400`, `404`, `422`) fail fast. A request that names no provider at all broadcasts in
+round-robin order and takes the first success.
+
+**Does it support streaming?**
+Yes — full SSE streaming on the OpenAI, Anthropic and Gemini dialects, with responses translated
+between formats on the fly, including streamed tool calls.
+
+**Can I use it with chatbots, n8n or Hermes-style agents?**
+Yes — anything that speaks the OpenAI protocol plugs in with the same three values (base URL,
+`sk-` token, `slug/model`). One gateway serves coding agents, chatbots and automations at once,
+each on its own token, with no server infrastructure.
+
+**Can I serve my own domain (and my customers) from it?**
+Yes. Put your domain in front of the Worker with Cloudflare routing, then hand customers your
+domain base URL plus one gateway token each (see [Custom Domain](#custom-domain-optional)).
+Usage stays separated per token, so a single Worker on your domain serves every project and
+customer.
+
+---
+
+## 📬 Contact
+
+Questions, bug reports, translation fixes, commercial support and security disclosures all reach a
+human at the same address:
+
+- **Email:** [info@barivan.com](mailto:info@barivan.com)
+- **Issues & feature requests:** [github.com/barivanlab/cfrouter/issues](https://github.com/barivanlab/cfrouter/issues)
+- **Discussions & usage questions:** [github.com/barivanlab/cfrouter/discussions](https://github.com/barivanlab/cfrouter/discussions)
+- **Security reports:** private advisory only — see [SECURITY.md](SECURITY.md), never a public issue

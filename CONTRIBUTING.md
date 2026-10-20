@@ -67,6 +67,20 @@ npm run dev
 - Include your Wrangler version (`wrangler --version`)
 - Include any error messages
 - For usage questions, use [Discussions](https://github.com/barivanlab/cfrouter/discussions)
+- For anything else — translation fixes, commercial support, or a security report you would
+  rather not file on GitHub — write to **info@barivan.com**
+
+## Translations
+
+The README ships in English (`README.md`), Persian (`README.fa.md`), French (`README.fr.md`),
+Arabic (`README.ar.md`) and Spanish (`README.es.md`). English is canonical — when a change affects
+usage, update it first; translations then follow.
+
+- Fixing a wrong term, a broken anchor or an untranslated block is a welcome PR on its own.
+- Adding a new language: copy `README.md` to `README.<code>.md`, translate it, and add the entry to
+  the language line, the badge row and the "Documentation in Other Languages" table in every README.
+- Keep code blocks, commands, model IDs and endpoint paths in English/Latin script — only the prose
+  is translated.
 
 ## Pull Request Process
 

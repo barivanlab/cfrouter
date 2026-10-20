@@ -16,7 +16,7 @@ Only the latest release receives security fixes.
 
 1. Open a [private security advisory](https://github.com/barivanlab/cfrouter/security/advisories/new)
    (GitHub → Security → Advisories → New draft advisory), or
-2. Open an issue with no details and ask for a contact channel.
+2. Email **info@barivan.com** — the same address handles every other kind of report.
 
 Please include:
 
