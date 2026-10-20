@@ -25,7 +25,7 @@
 
 | Section | Description |
 |---------|-------------|
-| [Qu'est-ce que CFRouter ?](#quest-ce-que-cfrouter) | Présentation du projet |
+| [Qu'est-ce que CFRouter ?](#quest-ce-que-cfrouter-) | Présentation du projet |
 | [Installation](#-installation) | Un clic, CLI ou dashboard — choisissez votre voie |
 | [Démarrage rapide (CLI)](#-démarrage-rapide) | Option B — pour les développeurs à l'aise avec le terminal |
 | [Installation via le dashboard Cloudflare](#️-installation-via-le-dashboard-cloudflare-sans-cli) | Option C — déploiement via l'interface web uniquement |
